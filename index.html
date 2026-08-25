@@ -2,7 +2,12 @@
 <html lang="id">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="VEKUS">
+<meta name="theme-color" content="#185FA5">
 <title>VEKUS — Verifikasi Keberadaan Usaha | BPS Jakarta Barat</title>
 <style>
 /* ── Reset & Base ── */
@@ -786,9 +791,50 @@ var editRow    = null;
 var activeTab  = 'belum';   // 'belum' | 'selesai'
 
 // ── Cache config ──
-var CACHE_KEY  = 'se2026_data';
-var CACHE_META = 'se2026_meta';
-var CACHE_TTL  = 5 * 60 * 1000;   // 5 menit dalam milidetik
+var CACHE_KEY  = 'vekus_data';
+var CACHE_META = 'vekus_meta';
+var CACHE_TTL  = 24 * 60 * 60 * 1000;   // 24 jam — cache tetap segar seharian
+
+// ── Baca cache — selalu kembalikan data jika ada, terlepas dari TTL ──
+function readCache() {
+  try {
+    var meta = JSON.parse(localStorage.getItem(CACHE_META) || 'null');
+    var raw  = localStorage.getItem(CACHE_KEY);
+    if (!meta || !raw) return null;
+    return { data: JSON.parse(raw), ts: meta.ts, stale: Date.now() - meta.ts > CACHE_TTL };
+  } catch(e) { return null; }
+}
+
+// ── Tulis cache ──
+function writeCache(data) {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+    localStorage.setItem(CACHE_META, JSON.stringify({ ts: Date.now() }));
+  } catch(e) {}
+}
+
+// ── Hapus cache saat PPL simpan data ──
+function clearCache() {
+  try {
+    localStorage.removeItem(CACHE_KEY);
+    localStorage.removeItem(CACHE_META);
+  } catch(e) {}
+}
+
+// ── Info waktu cache di tombol refresh ──
+function updateCacheInfo(ts, fromCache) {
+  var btn = document.getElementById('btn-refresh');
+  var svgRefresh = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>';
+  if (!ts) { btn.innerHTML = svgRefresh + ' Refresh'; return; }
+  var d   = new Date(ts);
+  var jam = d.getHours().toString().padStart(2,'0');
+  var mnt = d.getMinutes().toString().padStart(2,'0');
+  var label = fromCache ? '⚡ ' + jam+':'+mnt : '🔄 ' + jam+':'+mnt;
+  btn.innerHTML = svgRefresh + ' ' + label;
+  btn.title = fromCache
+    ? 'Cache pukul ' + jam+':'+mnt + ' — klik untuk ambil data terbaru'
+    : 'Data langsung dari server pukul ' + jam+':'+mnt;
+}
 
 // ── Inisialisasi ──
 window.addEventListener('DOMContentLoaded', function() {
@@ -798,76 +844,54 @@ window.addEventListener('DOMContentLoaded', function() {
   }
 });
 
-// ── Baca cache dari localStorage ──
-function readCache() {
-  try {
-    var meta = JSON.parse(localStorage.getItem(CACHE_META) || 'null');
-    var raw  = localStorage.getItem(CACHE_KEY);
-    if (!meta || !raw) return null;
-    if (Date.now() - meta.ts > CACHE_TTL) return null;   // sudah kadaluarsa
-    return { data: JSON.parse(raw), ts: meta.ts };
-  } catch(e) { return null; }
-}
-
-// ── Tulis cache ke localStorage ──
-function writeCache(data) {
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(data));
-    localStorage.setItem(CACHE_META, JSON.stringify({ ts: Date.now() }));
-  } catch(e) { /* localStorage penuh atau diblokir, abaikan */ }
-}
-
-// ── Hapus cache (dipanggil saat simpan data baru) ──
-function clearCache() {
-  try {
-    localStorage.removeItem(CACHE_KEY);
-    localStorage.removeItem(CACHE_META);
-  } catch(e) {}
-}
-
-// ── Tampilkan info waktu cache di tombol refresh ──
-function updateCacheInfo(ts, fromCache) {
-  var btn = document.getElementById('btn-refresh');
-  if (!ts) {
-    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> Refresh';
-    return;
-  }
-  var d   = new Date(ts);
-  var jam = d.getHours().toString().padStart(2,'0');
-  var mnt = d.getMinutes().toString().padStart(2,'0');
-  var det = d.getSeconds().toString().padStart(2,'0');
-  var label = fromCache ? '⚡ Cache ' + jam+':'+mnt+':'+det : '🔄 ' + jam+':'+mnt+':'+det;
-  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> ' + label;
-  btn.title = fromCache
-    ? 'Data dari cache lokal (' + jam+':'+mnt+':'+det + '). Klik untuk ambil data terbaru.'
-    : 'Data diambil langsung dari server pukul ' + jam+':'+mnt+':'+det + '. Klik untuk refresh.';
-}
-
-// ── Load data — force=true berarti abaikan cache ──
+// ── Load data — strategi stale-while-revalidate ──
+// force=true  → abaikan cache, tampilkan loading, fetch fresh
+// force=false → tampilkan cache seketika lalu fetch di background
 function loadData(force) {
   if (APPS_SCRIPT_URL === 'GANTI_DENGAN_URL_WEB_APP_APPS_SCRIPT') {
     document.getElementById('usaha-list').innerHTML =
-      '<div class="empty">URL Apps Script belum dikonfigurasi.<br>Isi <code>APPS_SCRIPT_URL</code> di bagian atas script.</div>';
+      '<div class="empty">URL Apps Script belum dikonfigurasi.</div>';
     return;
   }
 
-  // Coba cache dulu (kecuali force refresh)
-  if (!force) {
-    var cached = readCache();
-    if (cached) {
-      allData = cached.data;
-      buildFilters();
-      renderList();
-      updateCacheInfo(cached.ts, true);
-      showToast('⚡ Data dari cache lokal', '');
-      return;
-    }
+  var cached = readCache();
+
+  if (!force && cached) {
+    // Tampilkan cache seketika — tidak ada loading screen sama sekali
+    allData = cached.data;
+    buildFilters();
+    renderList();
+    updateCacheInfo(cached.ts, true);
+
+    // Fetch di background diam-diam (tidak ganggu tampilan)
+    fetchBackground();
+    return;
   }
 
-  // Fetch dari server
+  // Force refresh atau tidak ada cache sama sekali → tampilkan loading
   document.getElementById('usaha-list').innerHTML =
-    '<div class="loading"><div class="spinner"></div><div>Mengambil data terbaru…</div></div>';
+    '<div class="loading"><div class="spinner"></div><div>Mengambil data…</div></div>';
 
+  fetchForeground(force);
+}
+
+// ── Fetch di background (cache ada, perlu update diam-diam) ──
+function fetchBackground() {
+  fetch(APPS_SCRIPT_URL)
+    .then(function(r){ return r.json(); })
+    .then(function(json){
+      if (json.status !== 'ok') return;   // gagal background — biarkan, cache masih tampil
+      allData = json.data;
+      writeCache(allData);
+      buildFilters();
+      renderList();
+      updateCacheInfo(Date.now(), false);
+    })
+    .catch(function(){ /* background gagal — tidak perlu notif, cache sudah tampil */ });
+}
+
+// ── Fetch foreground (tidak ada cache / force) ──
+function fetchForeground(force) {
   fetch(APPS_SCRIPT_URL)
     .then(function(r){ return r.json(); })
     .then(function(json){
@@ -880,18 +904,14 @@ function loadData(force) {
       if (force) showToast('✓ Data terbaru berhasil dimuat', 'ok');
     })
     .catch(function(err){
-      // Kalau fetch gagal, coba tampilkan cache lama jika ada
-      var stale = null;
-      try {
-        var raw = localStorage.getItem(CACHE_KEY);
-        if (raw) stale = JSON.parse(raw);
-      } catch(e) {}
-
-      if (stale) {
-        allData = stale;
+      // Fetch gagal — coba pakai cache lama meski expired
+      var cached = readCache();
+      if (cached) {
+        allData = cached.data;
         buildFilters();
         renderList();
-        showToast('⚠ Gagal refresh, menampilkan cache lama', 'err');
+        updateCacheInfo(cached.ts, true);
+        showToast('⚠ Gagal refresh, menampilkan data terakhir', 'err');
       } else {
         document.getElementById('usaha-list').innerHTML =
           '<div class="empty">Gagal memuat data.<br><small>' + err.message + '</small></div>';
