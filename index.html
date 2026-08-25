@@ -572,7 +572,7 @@ body {
       <div class="topbar-sub">SE2026 · BPS Kota Jakarta Barat</div>
     </div>
   </div>
-  <button id="btn-refresh" onclick="loadData(true)">
+  <button id="btn-refresh" onclick="resetAndLoad()">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
     Refresh
   </button>
@@ -616,7 +616,7 @@ body {
       <!-- Filter Status -->
       <div class="fg">
         <label>Status Pendataan</label>
-        <select id="sel-status" onchange="renderList()">
+        <select id="sel-status" onchange="onFilterChange()">
           <option value="">Semua Status</option>
           <option value="Selesai">Selesai</option>
           <option value="Progress">Progress</option>
@@ -649,7 +649,7 @@ body {
   <!-- Search usaha -->
   <div class="search-wrap">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-    <input type="text" class="search-input" id="search-usaha" placeholder="Cari nama usaha…" oninput="renderList()" />
+    <input type="text" class="search-input" id="search-usaha" placeholder="Cari nama usaha…" oninput="onFilterChange()" />
   </div>
 
   <!-- Tabs -->
@@ -664,12 +664,9 @@ body {
     </button>
   </div>
 
-  <div class="usaha-list" id="usaha-list">
-    <div class="loading">
-      <div class="spinner"></div>
-      <div>Memuat data dari Google Sheets…</div>
-    </div>
-  </div>
+  <div class="usaha-list" id="usaha-list"></div>
+  <!-- Sentinel untuk infinite scroll -->
+  <div id="scroll-sentinel" style="height:1px;margin:8px 0"></div>
 
 </div>
 
@@ -782,158 +779,152 @@ body {
 // ══════════════════════════════════════════════════════════
 // KONFIGURASI — GANTI URL INI SETELAH DEPLOY APPS SCRIPT
 // ══════════════════════════════════════════════════════════
-var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyjYzOp3rdQjiszmF0vi0ECfQ8DMAJ_hMYOcKJzy5NkE9Cz4X34icSMndRo9GDYiMLo/exec';
+var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxRvFU576I6Fh781P4rqGRrbWLwPy_NBKTB7mLI8br-upYz6YJU5BirJZepcPZMf3JZ/exec';
 // Contoh: 'https://script.google.com/macros/s/AKfycb.../exec'
 // ══════════════════════════════════════════════════════════
 
-var allData    = [];
+var allData    = [];        // semua data yang sudah dimuat
 var editRow    = null;
-var activeTab  = 'belum';   // 'belum' | 'selesai'
-
-// ── Cache config ──
-var CACHE_KEY  = 'vekus_data';
-var CACHE_META = 'vekus_meta';
-var CACHE_TTL  = 24 * 60 * 60 * 1000;   // 24 jam — cache tetap segar seharian
-
-// ── Baca cache — selalu kembalikan data jika ada, terlepas dari TTL ──
-function readCache() {
-  try {
-    var meta = JSON.parse(localStorage.getItem(CACHE_META) || 'null');
-    var raw  = localStorage.getItem(CACHE_KEY);
-    if (!meta || !raw) return null;
-    return { data: JSON.parse(raw), ts: meta.ts, stale: Date.now() - meta.ts > CACHE_TTL };
-  } catch(e) { return null; }
-}
-
-// ── Tulis cache ──
-function writeCache(data) {
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(data));
-    localStorage.setItem(CACHE_META, JSON.stringify({ ts: Date.now() }));
-  } catch(e) {}
-}
-
-// ── Hapus cache saat PPL simpan data ──
-function clearCache() {
-  try {
-    localStorage.removeItem(CACHE_KEY);
-    localStorage.removeItem(CACHE_META);
-  } catch(e) {}
-}
-
-// ── Info waktu cache di tombol refresh ──
-function updateCacheInfo(ts, fromCache) {
-  var btn = document.getElementById('btn-refresh');
-  var svgRefresh = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>';
-  if (!ts) { btn.innerHTML = svgRefresh + ' Refresh'; return; }
-  var d   = new Date(ts);
-  var jam = d.getHours().toString().padStart(2,'0');
-  var mnt = d.getMinutes().toString().padStart(2,'0');
-  var label = fromCache ? '⚡ ' + jam+':'+mnt : '🔄 ' + jam+':'+mnt;
-  btn.innerHTML = svgRefresh + ' ' + label;
-  btn.title = fromCache
-    ? 'Cache pukul ' + jam+':'+mnt + ' — klik untuk ambil data terbaru'
-    : 'Data langsung dari server pukul ' + jam+':'+mnt;
-}
+var activeTab  = 'belum';
+var curPage    = 0;
+var PAGE_SIZE  = 50;       // render 50 kartu sekaligus
+var totalRows  = 0;
+var isFetching = false;
+var filterTimer = null;
 
 // ── Inisialisasi ──
 window.addEventListener('DOMContentLoaded', function() {
   if (APPS_SCRIPT_URL !== 'GANTI_DENGAN_URL_WEB_APP_APPS_SCRIPT') {
     document.getElementById('config-banner').classList.remove('show');
-    loadData(false);
+    resetAndLoad();
+  }
+  // Infinite scroll observer
+  var sentinel = document.getElementById('scroll-sentinel');
+  if (sentinel) {
+    var observer = new IntersectionObserver(function(entries) {
+      if (entries[0].isIntersecting && !isFetching) loadMore();
+    }, { rootMargin: '200px' });
+    observer.observe(sentinel);
   }
 });
 
-// ── Load data — strategi stale-while-revalidate ──
-// force=true  → abaikan cache, tampilkan loading, fetch fresh
-// force=false → tampilkan cache seketika lalu fetch di background
-function loadData(force) {
-  if (APPS_SCRIPT_URL === 'GANTI_DENGAN_URL_WEB_APP_APPS_SCRIPT') {
-    document.getElementById('usaha-list').innerHTML =
-      '<div class="empty">URL Apps Script belum dikonfigurasi.</div>';
-    return;
-  }
-
-  var cached = readCache();
-
-  if (!force && cached) {
-    // Tampilkan cache seketika — tidak ada loading screen sama sekali
-    allData = cached.data;
-    buildFilters();
-    renderList();
-    updateCacheInfo(cached.ts, true);
-
-    // Fetch di background diam-diam (tidak ganggu tampilan)
-    fetchBackground();
-    return;
-  }
-
-  // Force refresh atau tidak ada cache sama sekali → tampilkan loading
+// ── Reset state & muat halaman pertama ──
+function resetAndLoad() {
+  allData  = [];
+  curPage  = 0;
+  totalRows = 0;
   document.getElementById('usaha-list').innerHTML =
-    '<div class="loading"><div class="spinner"></div><div>Mengambil data…</div></div>';
-
-  fetchForeground(force);
+    '<div class="loading"><div class="spinner"></div><div>Memuat data…</div></div>';
+  fetchPage(0, true);
 }
 
-// ── Fetch di background (cache ada, perlu update diam-diam) ──
-function fetchBackground() {
-  fetch(APPS_SCRIPT_URL)
-    .then(function(r){ return r.json(); })
-    .then(function(json){
-      if (json.status !== 'ok') return;   // gagal background — biarkan, cache masih tampil
-      allData = json.data;
-      writeCache(allData);
-      buildFilters();
-      renderList();
-      updateCacheInfo(Date.now(), false);
-    })
-    .catch(function(){ /* background gagal — tidak perlu notif, cache sudah tampil */ });
-}
+// ── Ambil satu halaman dari server ──
+function fetchPage(page, isFirst) {
+  if (isFetching) return;
+  isFetching = true;
 
-// ── Fetch foreground (tidak ada cache / force) ──
-function fetchForeground(force) {
-  fetch(APPS_SCRIPT_URL)
+  var ppl    = document.getElementById('sel-ppl').value;
+  var q      = (document.getElementById('search-usaha').value || '').trim();
+  var url    = APPS_SCRIPT_URL
+    + '?page=' + page
+    + '&pageSize=' + PAGE_SIZE
+    + (ppl ? '&ppl=' + encodeURIComponent(ppl) : '')
+    + (q   ? '&q='   + encodeURIComponent(q)   : '');
+
+  fetch(url)
     .then(function(r){ return r.json(); })
     .then(function(json){
+      isFetching = false;
       if (json.status !== 'ok') throw new Error(json.message);
-      allData = json.data;
-      writeCache(allData);
-      buildFilters();
-      renderList();
-      updateCacheInfo(Date.now(), false);
-      if (force) showToast('✓ Data terbaru berhasil dimuat', 'ok');
+
+      // Halaman pertama: set PPL list & stats dari server
+      if (isFirst && json.ppls) buildFiltersFromServer(json.ppls);
+      if (isFirst) totalRows = json.total;
+
+      updateStats(json.stats, json.total);
+      appendData(json.data, isFirst);
+      curPage = json.page + 1;
+
+      // Sembunyikan sentinel jika tidak ada lagi data
+      var sentinel = document.getElementById('scroll-sentinel');
+      if (sentinel) sentinel.style.display = json.hasMore ? '' : 'none';
+
+      updateCacheInfo(json.cacheTs, false);
     })
     .catch(function(err){
-      // Fetch gagal — coba pakai cache lama meski expired
-      var cached = readCache();
-      if (cached) {
-        allData = cached.data;
-        buildFilters();
-        renderList();
-        updateCacheInfo(cached.ts, true);
-        showToast('⚠ Gagal refresh, menampilkan data terakhir', 'err');
-      } else {
+      isFetching = false;
+      if (isFirst) {
         document.getElementById('usaha-list').innerHTML =
           '<div class="empty">Gagal memuat data.<br><small>' + err.message + '</small></div>';
-        showToast('Gagal memuat data', 'err');
       }
+      showToast('Gagal memuat data', 'err');
     });
 }
 
-// ── Bangun filter petugas dari data ──
-function buildFilters() {
-  var ppls = [...new Set(allData.map(function(d){ return d.namaPegawai; }).filter(Boolean))].sort();
-  var opts  = document.getElementById('ppl-options');
-  opts.innerHTML = '';
+// ── Muat halaman berikutnya saat scroll ──
+function loadMore() {
+  fetchPage(curPage, false);
+}
 
-  // Opsi "Semua"
+// ── Tambahkan data ke allData & render kartu baru ──
+function appendData(newRows, isFirst) {
+  // Filter berdasarkan tab aktif di sisi klien
+  var tabRows = newRows.filter(function(d){
+    return activeTab === 'selesai' ? isSelesai(d) : !isSelesai(d);
+  });
+
+  if (isFirst) {
+    allData = newRows;
+    var el = document.getElementById('usaha-list');
+    if (!tabRows.length && curPage === 0) {
+      el.innerHTML = '<div class="empty">' +
+        (activeTab === 'selesai' ? 'Belum ada usaha yang selesai.' : 'Semua usaha sudah selesai! 🎉') +
+        '</div>';
+      window.filteredRef = [];
+      return;
+    }
+    el.innerHTML = '';
+    window.filteredRef = [];
+  } else {
+    allData = allData.concat(newRows);
+  }
+
+  window.filteredRef = (window.filteredRef || []).concat(tabRows);
+  var el = document.getElementById('usaha-list');
+  tabRows.forEach(function(d, localIdx){
+    var globalIdx = (window.filteredRef.length - tabRows.length) + localIdx;
+    el.insertAdjacentHTML('beforeend', buildCard(d, globalIdx));
+  });
+}
+
+// ── Update statistik summary bar ──
+function updateStats(stats, total) {
+  if (!stats) return;
+  document.getElementById('st-total').textContent    = total || 0;
+  document.getElementById('st-selesai').textContent  = stats.selesai  || 0;
+  document.getElementById('st-progress').textContent = stats.progress || 0;
+  document.getElementById('st-belum').textContent    = stats.belum    || 0;
+
+  var nb = (stats.progress || 0) + (stats.belum || 0);
+  var ns = stats.selesai || 0;
+  var bBelum   = document.getElementById('badge-belum');
+  var bSelesai = document.getElementById('badge-selesai');
+  bBelum.textContent   = nb;
+  bSelesai.textContent = ns;
+  bBelum.className   = 'tab-badge' + (nb > 0 ? ' has-items' : '');
+  bSelesai.className = 'tab-badge' + (ns > 0 ? ' has-items' : '');
+}
+
+// ── Bangun opsi dropdown petugas dari server ──
+function buildFiltersFromServer(ppls) {
+  var opts = document.getElementById('ppl-options');
+  opts.innerHTML = '';
   var all = document.createElement('div');
   all.className = 'ppl-option selected';
   all.textContent = 'Semua Petugas';
   all.dataset.val = '';
   all.onclick = function(){ selectPpl('', 'Semua Petugas'); };
   opts.appendChild(all);
-
   ppls.forEach(function(p){
     var el = document.createElement('div');
     el.className = 'ppl-option';
@@ -943,6 +934,25 @@ function buildFilters() {
     opts.appendChild(el);
   });
 }
+
+// Alias agar fungsi lama yang masih dipanggil tidak error
+function buildFilters() {}
+function renderList()   { resetAndLoad(); }
+
+// ── Info cache ──
+function updateCacheInfo(ts, fromCache) {
+  var btn = document.getElementById('btn-refresh');
+  var svg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>';
+  if (!ts) { btn.innerHTML = svg + ' Refresh'; return; }
+  var d = new Date(ts);
+  var hm = d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+  btn.innerHTML = svg + ' 🔄 ' + hm;
+  btn.title = 'Data cache server pukul ' + hm + ' — klik untuk refresh';
+}
+
+function clearCache() {}   // tidak perlu localStorage lagi
+
+
 
 // ── Toggle dropdown petugas ──
 function togglePplDropdown() {
@@ -1004,107 +1014,52 @@ function switchTab(tab) {
   activeTab = tab;
   document.getElementById('tab-belum').classList.toggle('active', tab === 'belum');
   document.getElementById('tab-selesai').classList.toggle('active', tab === 'selesai');
-  renderList();
+  resetAndLoad();
 }
 
-// ── Render daftar usaha ──
-function renderList() {
-  var ppl    = document.getElementById('sel-ppl').value;
-  var status = document.getElementById('sel-status').value;
-  var q      = (document.getElementById('search-usaha').value || '').toLowerCase().trim();
+// ── Filter berubah: debounce 300ms ──
+function onFilterChange() {
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(resetAndLoad, 300);
+}
 
-  // Filter utama
-  var filtered = allData.filter(function(d){
-    if (ppl && d.namaPegawai !== ppl) return false;
-    if (q && !(d.namaUsaha||'').toLowerCase().includes(q)) return false;
-    // Filter dropdown status: sesuaikan dengan logika baru
-    if (status) {
-      var cs = getCardStatus(d);
-      if (status === 'Selesai'         && cs !== 'selesai')  return false;
-      if (status === 'Progress'        && cs !== 'progress') return false;
-      if (status === 'Belum Dikunjungi'&& cs !== 'belum')    return false;
-    }
-    return true;
-  });
+// ── Build HTML satu kartu ──
+function buildCard(d, idx) {
+  var cs    = getCardStatus(d);
+  var stLbl = getStatusLabel(d);
+  var stCls = cs==='selesai' ? 'st-selesai' : cs==='progress' ? 'st-progress' : 'st-belum';
+  var stBdg = cs==='selesai' ? 'badge-selesai' : cs==='progress' ? 'badge-progress' : 'badge-belum';
+  var dotCl = cs==='selesai' ? 'dot-s' : cs==='progress' ? 'dot-p' : 'dot-b';
+  var katCl = d.kategori==='UB' ? 'badge-ub' : d.kategori==='UM' ? 'badge-um' : 'badge-pe';
+  var doneBtn = cs==='selesai' ? 'done' : '';
 
-  // Hitung statistik pakai logika baru
-  var s=0, p=0, b=0;
-  filtered.forEach(function(d){
-    var cs = getCardStatus(d);
-    if (cs === 'selesai')  s++;
-    else if (cs === 'progress') p++;
-    else b++;
-  });
-  document.getElementById('st-total').textContent    = filtered.length;
-  document.getElementById('st-selesai').textContent  = s;
-  document.getElementById('st-progress').textContent = p;
-  document.getElementById('st-belum').textContent    = b;
-
-  // Update badge di tab
-  var bBelum   = document.getElementById('badge-belum');
-  var bSelesai = document.getElementById('badge-selesai');
-  bBelum.textContent   = p + b;
-  bSelesai.textContent = s;
-  bBelum.className   = 'tab-badge' + (p + b > 0 ? ' has-items' : '');
-  bSelesai.className = 'tab-badge' + (s > 0 ? ' has-items' : '');
-
-  // Split berdasarkan tab aktif
-  var tabData = filtered.filter(function(d){
-    return activeTab === 'selesai' ? isSelesai(d) : !isSelesai(d);
-  });
-
-  var el = document.getElementById('usaha-list');
-  if (!tabData.length) {
-    var msg = activeTab === 'selesai'
-      ? 'Belum ada usaha yang selesai.'
-      : 'Semua usaha sudah selesai! 🎉';
-    el.innerHTML = '<div class="empty">'+msg+'</div>';
-    window.filteredRef = [];
-    return;
+  var extraHTML = '';
+  if (d.lastUpdate || d.keterangan) {
+    extraHTML = '<div class="card-extra">';
+    if (d.lastUpdate) extraHTML += '<div class="card-extra-item"><strong>Update terakhir</strong>'+d.lastUpdate+'</div>';
+    if (d.keterangan) extraHTML += '<div class="card-extra-item" style="grid-column:1/-1"><strong>Keterangan</strong>'+esc(d.keterangan)+'</div>';
+    extraHTML += '</div>';
   }
 
-  el.innerHTML = tabData.map(function(d, i){
-    var cs    = getCardStatus(d);
-    var stLbl = getStatusLabel(d);
-    var stCls = cs==='selesai' ? 'st-selesai' : cs==='progress' ? 'st-progress' : 'st-belum';
-    var stBdg = cs==='selesai' ? 'badge-selesai' : cs==='progress' ? 'badge-progress' : 'badge-belum';
-    var dotCl = cs==='selesai' ? 'dot-s' : cs==='progress' ? 'dot-p' : 'dot-b';
-    var katCl = d.kategori==='UB' ? 'badge-ub' : d.kategori==='UM' ? 'badge-um' : 'badge-pe';
-    var doneBtn = cs==='selesai' ? 'done' : '';
-
-    var tgls = [d.tglKun1, d.tglKun2, d.tglKun3, d.tglKun4, d.tglKun5].filter(Boolean);
-
-    var extraHTML = '';
-    if (d.lastUpdate || tgls.length || d.keterangan) {
-      extraHTML = '<div class="card-extra">';
-      if (tgls.length)  extraHTML += '<div class="card-extra-item"><strong>Kunjungan ('+tgls.length+'x)</strong>'+tgls.join(', ')+'</div>';
-      if (d.lastUpdate) extraHTML += '<div class="card-extra-item"><strong>Update terakhir</strong>'+d.lastUpdate+'</div>';
-      if (d.keterangan) extraHTML += '<div class="card-extra-item" style="grid-column:1/-1"><strong>Keterangan</strong>'+esc(d.keterangan)+'</div>';
-      extraHTML += '</div>';
-    }
-
-    return '<div class="card '+stCls+'">'
-      + '<div class="card-top">'
-      +   '<div class="card-body">'
-      +     '<div class="card-nama" title="'+esc(d.namaUsaha)+'">'+esc(d.namaUsaha)+'</div>'
-      +     '<div class="card-meta">'+toTitle(d.kecamatan)+' · '+toTitle(d.kelurahan)+(d.namaPegawai ? ' · <strong>PPL: '+esc(d.namaPegawai)+'</strong>' : '')+'</div>'
-      +     '<div class="card-tags">'
-      +       '<span class="badge '+katCl+'">'+esc(d.kategori)+'</span>'
-      +       '<span class="badge '+stBdg+'"><span class="dot '+dotCl+'"></span>&nbsp;'+esc(stLbl)+'</span>'
-      +       (d.metode && (d.statusKeb||'').trim()==='Ditemukan' ? '<span class="badge badge-neutral">'+esc(d.metode)+'</span>' : '')
-      +     '</div>'
-      +   '</div>'
-      +   '<button class="btn-lengkapi '+doneBtn+'" data-idx="'+i+'" onclick="openModal(this.dataset.idx, window.filteredRef)">'
-      +     (cs==='selesai' ? 'Edit' : 'Lengkapi')
-      +   '</button>'
-      + '</div>'
-      + extraHTML
-      + '</div>';
-  }).join('');
-
-  // Simpan referensi data tab aktif untuk modal
-  window.filteredRef = tabData;
+  return '<div class="card '+stCls+'">'
+    + '<div class="card-top">'
+    +   '<div class="card-body">'
+    +     '<div class="card-nama" title="'+esc(d.namaUsaha)+'">'+esc(d.namaUsaha)+'</div>'
+    +     '<div class="card-meta">'+toTitle(d.kecamatan)+' · '+toTitle(d.kelurahan)+(d.namaPegawai ? ' · <strong>PPL: '+esc(d.namaPegawai)+'</strong>' : '')+'</div>'
+    +     '<div class="card-tags">'
+    +       '<span class="badge '+katCl+'">'+esc(d.kategori)+'</span>'
+    +       '<span class="badge '+stBdg+'"><span class="dot '+dotCl+'"></span>&nbsp;'+esc(stLbl)+'</span>'
+    +       (d.metode && (d.statusKeb||'').trim()==='Ditemukan' ? '<span class="badge badge-neutral">'+esc(d.metode)+'</span>' : '')
+    +     '</div>'
+    +   '</div>'
+    +   '<button class="btn-lengkapi '+doneBtn+'" data-idx="'+idx+'" onclick="openModal(this.dataset.idx, window.filteredRef)">'
+    +     (cs==='selesai' ? 'Edit' : 'Lengkapi')
+    +   '</button>'
+    + '</div>'
+    + extraHTML
+    + '</div>';
 }
+
 
 // ── Buka Modal ──
 function openModal(idx, arr) {
