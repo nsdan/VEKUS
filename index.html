@@ -779,7 +779,7 @@ body {
 // ══════════════════════════════════════════════════════════
 // KONFIGURASI — GANTI URL INI SETELAH DEPLOY APPS SCRIPT
 // ══════════════════════════════════════════════════════════
-var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxRvFU576I6Fh781P4rqGRrbWLwPy_NBKTB7mLI8br-upYz6YJU5BirJZepcPZMf3JZ/exec';
+var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx9rrX07Ta39g7F0x6fSq3lOh6iSwPYpLVQNvV9hQw42-rkGZGZxpP88cHYtveJ2W38/exec';
 // Contoh: 'https://script.google.com/macros/s/AKfycb.../exec'
 // ══════════════════════════════════════════════════════════
 
@@ -810,11 +810,15 @@ window.addEventListener('DOMContentLoaded', function() {
 
 // ── Reset state & muat halaman pertama ──
 function resetAndLoad() {
-  allData  = [];
-  curPage  = 0;
+  allData   = [];
+  curPage   = 0;
   totalRows = 0;
+  window.filteredRef = [];
+  isFetching = false;
   document.getElementById('usaha-list').innerHTML =
     '<div class="loading"><div class="spinner"></div><div>Memuat data…</div></div>';
+  var sentinel = document.getElementById('scroll-sentinel');
+  if (sentinel) sentinel.style.display = '';
   fetchPage(0, true);
 }
 
@@ -868,32 +872,44 @@ function loadMore() {
 
 // ── Tambahkan data ke allData & render kartu baru ──
 function appendData(newRows, isFirst) {
-  // Filter berdasarkan tab aktif di sisi klien
-  var tabRows = newRows.filter(function(d){
-    return activeTab === 'selesai' ? isSelesai(d) : !isSelesai(d);
-  });
-
   if (isFirst) {
     allData = newRows;
-    var el = document.getElementById('usaha-list');
-    if (!tabRows.length && curPage === 0) {
-      el.innerHTML = '<div class="empty">' +
-        (activeTab === 'selesai' ? 'Belum ada usaha yang selesai.' : 'Semua usaha sudah selesai! 🎉') +
-        '</div>';
-      window.filteredRef = [];
-      return;
-    }
-    el.innerHTML = '';
     window.filteredRef = [];
+    document.getElementById('usaha-list').innerHTML = '';
   } else {
     allData = allData.concat(newRows);
   }
 
-  window.filteredRef = (window.filteredRef || []).concat(tabRows);
+  // Filter berdasarkan tab aktif dan filter status dropdown
+  var status = document.getElementById('sel-status').value;
+  var tabRows = newRows.filter(function(d){
+    // Filter tab
+    var selesai = isSelesai(d);
+    if (activeTab === 'selesai' && !selesai) return false;
+    if (activeTab === 'belum'   &&  selesai) return false;
+    // Filter status dropdown jika ada
+    if (status) {
+      var cs = getCardStatus(d);
+      if (status === 'Selesai'          && cs !== 'selesai')  return false;
+      if (status === 'Progress'         && cs !== 'progress') return false;
+      if (status === 'Belum Dikunjungi' && cs !== 'belum')    return false;
+    }
+    return true;
+  });
+
   var el = document.getElementById('usaha-list');
-  tabRows.forEach(function(d, localIdx){
-    var globalIdx = (window.filteredRef.length - tabRows.length) + localIdx;
-    el.insertAdjacentHTML('beforeend', buildCard(d, globalIdx));
+
+  if (isFirst && tabRows.length === 0) {
+    el.innerHTML = '<div class="empty">' +
+      (activeTab === 'selesai' ? 'Belum ada usaha yang selesai.' : 'Semua usaha sudah selesai! 🎉') +
+      '</div>';
+    return;
+  }
+
+  tabRows.forEach(function(d) {
+    var idx = window.filteredRef.length;
+    window.filteredRef.push(d);
+    el.insertAdjacentHTML('beforeend', buildCard(d, idx));
   });
 }
 
