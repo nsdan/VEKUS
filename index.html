@@ -779,13 +779,14 @@ body {
 // ══════════════════════════════════════════════════════════
 // KONFIGURASI — GANTI URL INI SETELAH DEPLOY APPS SCRIPT
 // ══════════════════════════════════════════════════════════
-var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzzKbfmBOAtsIwjxTPZkg2Hhk5dqUuolWdPvV8k4Z4H4b0fX6FLBJXXfPrXasNK9P2O/exec';
+var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx9rrX07Ta39g7F0x6fSq3lOh6iSwPYpLVQNvV9hQw42-rkGZGZxpP88cHYtveJ2W38/exec';
 // Contoh: 'https://script.google.com/macros/s/AKfycb.../exec'
 // ══════════════════════════════════════════════════════════
 
-var allData    = [];        // semua data yang sudah dimuat
-var editRow    = null;
-var activeTab  = 'belum';
+var allData          = [];   // semua data yang sudah dimuat
+var editRow          = null;
+var editAssignmentId = null; // assignmentId baris yang sedang diedit
+var activeTab        = 'belum';
 var curPage    = 0;
 var PAGE_SIZE  = 50;       // render 50 kartu sekaligus
 var totalRows  = 0;
@@ -1080,7 +1081,8 @@ function buildCard(d, idx) {
 // ── Buka Modal ──
 function openModal(idx, arr) {
   var d = arr[parseInt(idx)];
-  editRow = d.rowIndex;
+  editRow          = d.rowIndex;
+  editAssignmentId = d.assignmentId || null;
 
   document.getElementById('m-nama').textContent = d.namaUsaha;
   document.getElementById('m-sub').textContent  =
@@ -1114,7 +1116,8 @@ function openModal(idx, arr) {
 
 function closeModal() {
   document.getElementById('overlay').classList.remove('open');
-  editRow = null;
+  editRow          = null;
+  editAssignmentId = null;
 }
 
 // ── Simpan ──
@@ -1157,13 +1160,14 @@ function simpan() {
 
   // Jika selain ditemukan, kosongkan metode & status pendataan di sheet
   var payload = {
-    rowIndex  : editRow,
-    statusKeb : keb,
-    metode    : isDitemukan ? document.getElementById('f-metode').value : '',
-    statusDat : isDitemukan ? document.getElementById('f-status').value : '',
-    pelaksana : document.getElementById('f-pelaksana').value,
-    keterangan: keterangan,
-    alamatBaru: alamatBaru
+    rowIndex     : editRow,
+    assignmentId : editAssignmentId || '',
+    statusKeb    : keb,
+    metode       : isDitemukan ? document.getElementById('f-metode').value : '',
+    statusDat    : isDitemukan ? document.getElementById('f-status').value : '',
+    pelaksana    : document.getElementById('f-pelaksana').value,
+    keterangan   : keterangan,
+    alamatBaru   : alamatBaru
   };
 
   // Update UI lokal dulu
