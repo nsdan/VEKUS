@@ -1177,6 +1177,9 @@ function simpan() {
 
   showToast('Menyimpan ke Google Sheets…', '');
 
+  // Simpan rowIndex sekarang sebelum closeModal() mereset editRow
+  var savedRowIndex = editRow;
+
   // Kirim ke Apps Script — tunggu response sebelum tutup modal & refresh
   fetch(APPS_SCRIPT_URL, {
     method : 'POST',
@@ -1186,8 +1189,12 @@ function simpan() {
   .then(function(json){
     if (json.status !== 'ok') throw new Error(json.message);
 
+    // Reset tombol SEBELUM closeModal agar tidak terbawa ke sesi berikutnya
+    btnSimpan.disabled    = false;
+    simpanTxt.textContent = 'Simpan';
+
     // Update data lokal setelah server konfirmasi berhasil
-    var target = allData.find(function(d){ return d.rowIndex === editRow; });
+    var target = allData.find(function(d){ return d.rowIndex === savedRowIndex; });
     if (target) {
       target.statusKeb  = payload.statusKeb;
       target.metode     = payload.metode;
@@ -1195,16 +1202,23 @@ function simpan() {
       target.pelaksana  = payload.pelaksana;
       target.keterangan = payload.keterangan;
       target.alamatBaru = payload.alamatBaru;
+      // Update lastUpdate lokal ke tanggal hari ini
+      var now = new Date();
+      target.lastUpdate = now.getDate().toString().padStart(2,'0') + '/' +
+                          (now.getMonth()+1).toString().padStart(2,'0') + '/' +
+                          now.getFullYear();
     }
 
-    // Baru tutup modal & refresh setelah simpan berhasil
+    // Tutup modal
     closeModal();
     showToast('✓ Data berhasil disimpan', 'ok');
-    renderList();
+
+    // Update kartu di DOM tanpa fetch ulang ke server
+    if (target) updateCardInDOM(target);
   })
   .catch(function(err){
     // Gagal — kembalikan tombol simpan, modal tetap terbuka agar bisa coba lagi
-    btnSimpan.disabled = false;
+    btnSimpan.disabled    = false;
     simpanTxt.textContent = 'Simpan';
     showToast('Gagal menyimpan: ' + err.message, 'err');
   });
@@ -1223,6 +1237,51 @@ function isSelesai(d) {
     return (d.keterangan || '').trim() !== '';
   }
   return false;
+}
+
+// ── Update satu kartu di DOM tanpa reload seluruh daftar ──
+function updateCardInDOM(d) {
+  // Cari elemen kartu berdasarkan rowIndex di filteredRef
+  var idx = -1;
+  for (var i = 0; i < (window.filteredRef || []).length; i++) {
+    if (window.filteredRef[i].rowIndex === d.rowIndex) { idx = i; break; }
+  }
+  if (idx === -1) return;
+
+  // Update referensi filteredRef
+  window.filteredRef[idx] = d;
+
+  var cs       = getCardStatus(d);
+  var selesai  = isSelesai(d);
+
+  // Apakah kartu ini seharusnya masih tampil di tab aktif?
+  var shouldShow = (activeTab === 'selesai') ? selesai : !selesai;
+
+  // Cari elemen kartu di DOM — tombol menyimpan data-idx
+  var btn = document.querySelector('.btn-lengkapi[data-idx="' + idx + '"]');
+  if (!btn) return;
+  var card = btn.closest('.card');
+  if (!card) return;
+
+  if (!shouldShow) {
+    // Kartu pindah tab — hapus dari tampilan saja
+    card.style.transition = 'opacity .25s';
+    card.style.opacity    = '0';
+    setTimeout(function(){ card.remove(); }, 260);
+    return;
+  }
+
+  // Bangun ulang HTML kartu dengan data terbaru
+  var newHtml = buildCard(d, idx);
+  var tmp = document.createElement('div');
+  tmp.innerHTML = newHtml;
+  var newCard = tmp.firstElementChild;
+
+  // Animasi singkat agar terasa ada perubahan
+  newCard.style.transition = 'box-shadow .2s';
+  card.replaceWith(newCard);
+  newCard.style.boxShadow = '0 0 0 2px #16A34A55';
+  setTimeout(function(){ newCard.style.boxShadow = ''; }, 600);
 }
 
 // Warna/kelas kartu berdasarkan kondisi baru
