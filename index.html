@@ -249,6 +249,7 @@ body {
 .stat-card.s .stat-num { color: var(--green); }
 .stat-card.p .stat-num { color: #B45309; }
 .stat-card.b .stat-num { color: var(--red); }
+.stat-card.g .stat-num { color: #6B7280; }
 
 /* ── Usaha List ── */
 .section-title {
@@ -575,10 +576,7 @@ body {
       <div class="topbar-sub">SE2026 · BPS Kota Jakarta Barat</div>
     </div>
   </div>
-  <button id="btn-refresh" onclick="resetAndLoad()">
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-    Refresh
-  </button>
+  <button id="btn-refresh" style="display:none" onclick="resetAndLoad()">Refresh</button>
 </div>
 
 <!-- ══ MAIN ══ -->
@@ -594,7 +592,7 @@ body {
   <!-- Filter -->
   <div class="filter-card">
     <h2>Filter Tampilan</h2>
-    <div class="filter-grid" style="grid-template-columns: 1fr 1fr; gap: 12px;">
+    <div class="filter-grid" style="grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
 
       <!-- Custom dropdown Petugas dengan search -->
       <div class="fg">
@@ -627,6 +625,21 @@ body {
           <option value="Belum Verifikasi">Belum Verifikasi</option>
         </select>
       </div>
+
+      <!-- Filter Kategori -->
+      <div class="fg">
+        <label>Kategori</label>
+        <select id="sel-kategori" onchange="onFilterChange()">
+          <option value="">Semua Kategori</option>
+          <option value="UB">UB</option>
+          <option value="UM">UM</option>
+          <option value="UMB">UMB</option>
+          <option value="UMK">UMK</option>
+          <option value="UMM">UMM</option>
+          <option value="UMB">UMB</option>
+          <option value="UB Non Pertanian">UB Non Pertanian</option>
+        </select>
+      </div>
     </div>
   </div>
 
@@ -644,9 +657,9 @@ body {
       <div class="stat-num" id="st-progress">—</div>
       <div class="stat-lbl">Progress</div>
     </div>
-    <div class="stat-card b">
+    <div class="stat-card g">
       <div class="stat-num" id="st-belum">—</div>
-      <div class="stat-lbl">Belum</div>
+      <div class="stat-lbl">Belum Verifikasi</div>
     </div>
   </div>
 
@@ -887,24 +900,29 @@ function appendData(newRows, isFirst) {
     allData = newRows;
     window.filteredRef = [];
     document.getElementById('usaha-list').innerHTML = '';
+    // Populasi dropdown kategori dari data aktual
+    buildKategoriOptions(newRows);
   } else {
     allData = allData.concat(newRows);
   }
 
-  // Filter berdasarkan tab aktif dan filter status dropdown
-  var status = document.getElementById('sel-status').value;
+  // Filter berdasarkan tab aktif dan filter status/kategori dropdown
+  var status   = document.getElementById('sel-status').value;
+  var kategori = document.getElementById('sel-kategori').value;
   var tabRows = newRows.filter(function(d){
     // Filter tab
     var selesai = isSelesai(d);
     if (activeTab === 'selesai' && !selesai) return false;
     if (activeTab === 'belum'   &&  selesai) return false;
+    // Filter kategori
+    if (kategori && (d.kategori || '') !== kategori) return false;
     // Filter status dropdown jika ada
     if (status) {
       var cs = getCardStatus(d);
       if (status === 'Selesai'          && cs !== 'selesai')  return false;
       if (status === 'Progress'         && cs !== 'progress') return false;
       if (status === 'Belum Dikunjungi' && cs !== 'belum')   return false;
-      if (status === 'Belum Verifikasi' && cs !== 'kosong')    return false;
+      if (status === 'Belum Verifikasi' && cs !== 'kosong')   return false;
     }
     return true;
   });
@@ -971,6 +989,25 @@ function buildFiltersFromServer(ppls) {
 // Alias agar fungsi lama yang masih dipanggil tidak error
 function buildFilters() {}
 function renderList()   { resetAndLoad(); }
+
+// ── Populasi dropdown kategori dari data aktual ──
+function buildKategoriOptions(rows) {
+  var sel  = document.getElementById('sel-kategori');
+  var prev = sel.value;
+  // Kumpulkan unik, urut alfabet
+  var seen = {}, list = [];
+  rows.forEach(function(d){ if (d.kategori && !seen[d.kategori]) { seen[d.kategori]=1; list.push(d.kategori); } });
+  list.sort();
+  // Rebuild opsi
+  sel.innerHTML = '<option value="">Semua Kategori</option>';
+  list.forEach(function(k){
+    var opt = document.createElement('option');
+    opt.value = k; opt.textContent = k;
+    sel.appendChild(opt);
+  });
+  // Pertahankan pilihan sebelumnya jika masih ada
+  if (prev && seen[prev]) sel.value = prev;
+}
 
 // ── Info cache ──
 function updateCacheInfo(ts, fromCache) {
@@ -1072,11 +1109,10 @@ function buildCard(d, idx) {
   var doneBtn = cs==='selesai' ? 'done' : '';
 
   var extraHTML = '';
-  if (d.lastUpdate || d.keterangan) {
-    extraHTML = '<div class="card-extra">';
-    if (d.lastUpdate) extraHTML += '<div class="card-extra-item"><strong>Update terakhir</strong>'+d.lastUpdate+'</div>';
-    if (d.keterangan) extraHTML += '<div class="card-extra-item" style="grid-column:1/-1"><strong>Keterangan</strong>'+esc(d.keterangan)+'</div>';
-    extraHTML += '</div>';
+  if (d.keterangan) {
+    extraHTML = '<div class="card-extra">'
+      + '<div class="card-extra-item" style="grid-column:1/-1"><strong>Keterangan</strong>'+esc(d.keterangan)+'</div>'
+      + '</div>';
   }
 
   return '<div class="card '+stCls+'">'
@@ -1322,8 +1358,9 @@ function updateCardInDOM(d) {
 // Dipakai setelah simpan berhasil saat kartu berpindah tab,
 // sehingga tab tujuan langsung menampilkan kartu yang baru saja disimpan.
 function renderFromLocal() {
-  var status = document.getElementById('sel-status').value;
-  var el     = document.getElementById('usaha-list');
+  var status   = document.getElementById('sel-status').value;
+  var kategori = document.getElementById('sel-kategori').value;
+  var el       = document.getElementById('usaha-list');
 
   window.filteredRef = [];
   el.innerHTML = '';
@@ -1332,12 +1369,13 @@ function renderFromLocal() {
     var selesai = isSelesai(d);
     if (activeTab === 'selesai' && !selesai) return false;
     if (activeTab === 'belum'   &&  selesai) return false;
+    if (kategori && (d.kategori || '') !== kategori) return false;
     if (status) {
       var cs = getCardStatus(d);
       if (status === 'Selesai'          && cs !== 'selesai')  return false;
       if (status === 'Progress'         && cs !== 'progress') return false;
       if (status === 'Belum Dikunjungi' && cs !== 'belum')   return false;
-      if (status === 'Belum Verifikasi' && cs !== 'kosong')    return false;
+      if (status === 'Belum Verifikasi' && cs !== 'kosong')   return false;
     }
     return true;
   });
