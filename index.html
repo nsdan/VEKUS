@@ -793,11 +793,20 @@ var totalRows  = 0;
 var isFetching = false;
 var filterTimer = null;
 
+// ── Warmup Apps Script (GET ringan supaya tidak cold start saat Simpan) ──
+function warmupAppsScript() {
+  try {
+    fetch(APPS_SCRIPT_URL + '?action=warmup', { method: 'GET' }).catch(function(){});
+  } catch(e) {}
+}
+
 // ── Inisialisasi ──
 window.addEventListener('DOMContentLoaded', function() {
   if (APPS_SCRIPT_URL !== 'GANTI_DENGAN_URL_WEB_APP_APPS_SCRIPT') {
     document.getElementById('config-banner').classList.remove('show');
     resetAndLoad();
+    // Warmup GAS 3 detik setelah load agar tidak mengganggu fetch data awal
+    setTimeout(warmupAppsScript, 3000);
   }
   // Infinite scroll observer
   var sentinel = document.getElementById('scroll-sentinel');
@@ -1125,7 +1134,7 @@ function closeModal() {
   editAssignmentId = null;
 }
 
-// ── Simpan ──
+// ── Simpan (Optimistic UI — modal langsung tutup, sync berjalan di background) ──
 function simpan() {
   if (!editRow) return;
 
@@ -1146,18 +1155,15 @@ function simpan() {
   }
   if (isLainnya) {
     var ketVal = document.getElementById('f-ket-wajib').value.trim();
-    // Tolak jika kosong atau hanya karakter tidak informatif (-, ., ,, spasi, kombinasinya)
     if (!ketVal || /^[\-\.\,\s]+$/.test(ketVal)) {
       showToast('⚠ Keterangan tidak valid, isi dengan informasi yang jelas', 'err'); return;
     }
   }
 
-  // Ambil keterangan dari field yang sesuai
   var keterangan = isDitemukan
     ? document.getElementById('f-ket').value.trim()
     : document.getElementById('f-ket-wajib').value.trim();
 
-  // Ambil alamat baru (hanya jika Tidak Ditemukan / Pindah)
   var alamatBaru = '';
   if (butuhaAlamat) {
     alamatBaru = document.getElementById('f-alamat-baru').value.trim();
@@ -1174,58 +1180,61 @@ function simpan() {
     alamatBaru   : alamatBaru
   };
 
-  // Disable tombol simpan & tampilkan spinner selama proses
-  var btnSimpan = document.getElementById('btn-simpan');
-  var simpanTxt = document.getElementById('simpan-txt');
-  btnSimpan.disabled = true;
-  simpanTxt.innerHTML = '<span class="spin-sm"></span> Menyimpan…';
-
-  showToast('Menyimpan ke Google Sheets…', '');
-
-  // Simpan rowIndex sekarang sebelum closeModal() mereset editRow
   var savedRowIndex = editRow;
 
-  // Kirim ke Apps Script — tunggu response sebelum tutup modal & refresh
+  // ── Snapshot data lama untuk rollback jika server gagal ──
+  var target = allData.find(function(d){ return d.rowIndex === savedRowIndex; });
+  var snapshot = target ? {
+    statusKeb  : target.statusKeb,
+    metode     : target.metode,
+    statusDat  : target.statusDat,
+    keterangan : target.keterangan,
+    alamatBaru : target.alamatBaru,
+    lastUpdate : target.lastUpdate
+  } : null;
+
+  // ── Update lokal SEKARANG — terasa instan ──
+  var now = new Date();
+  var nowStr = now.getDate().toString().padStart(2,'0') + '/' +
+               (now.getMonth()+1).toString().padStart(2,'0') + '/' +
+               now.getFullYear();
+  if (target) {
+    target.statusKeb  = payload.statusKeb;
+    target.metode     = payload.metode;
+    target.statusDat  = payload.statusDat;
+    target.keterangan = payload.keterangan;
+    target.alamatBaru = payload.alamatBaru;
+    target.lastUpdate = nowStr;
+  }
+
+  // Tutup modal & update DOM langsung (tidak tunggu server)
+  closeModal();
+  showToast('✓ Tersimpan', 'ok');
+  if (target) updateCardInDOM(target);
+
+  // ── Kirim ke server di background ──
   fetch(APPS_SCRIPT_URL, {
-    method : 'POST',
-    body   : JSON.stringify(payload)
+    method    : 'POST',
+    body      : JSON.stringify(payload),
+    keepalive : true
   })
   .then(function(r){ return r.json(); })
   .then(function(json){
     if (json.status !== 'ok') throw new Error(json.message);
-
-    // Reset tombol SEBELUM closeModal agar tidak terbawa ke sesi berikutnya
-    btnSimpan.disabled    = false;
-    simpanTxt.textContent = 'Simpan';
-
-    // Update data lokal setelah server konfirmasi berhasil
-    var target = allData.find(function(d){ return d.rowIndex === savedRowIndex; });
-    if (target) {
-      target.statusKeb  = payload.statusKeb;
-      target.metode     = payload.metode;
-      target.statusDat  = payload.statusDat;
-      // pelaksana tidak diupdate — nilai di sheet tidak berubah, jaga konsistensi lokal
-      target.keterangan = payload.keterangan;
-      target.alamatBaru = payload.alamatBaru;
-      // Update lastUpdate lokal ke tanggal hari ini
-      var now = new Date();
-      target.lastUpdate = now.getDate().toString().padStart(2,'0') + '/' +
-                          (now.getMonth()+1).toString().padStart(2,'0') + '/' +
-                          now.getFullYear();
-    }
-
-    // Tutup modal
-    closeModal();
-    showToast('✓ Data berhasil disimpan', 'ok');
-
-    // Update kartu di DOM tanpa fetch ulang ke server
-    if (target) updateCardInDOM(target);
+    // Server konfirmasi — tidak perlu tindakan tambahan
   })
   .catch(function(err){
-    // Gagal — kembalikan tombol simpan, modal tetap terbuka agar bisa coba lagi
-    btnSimpan.disabled    = false;
-    simpanTxt.textContent = 'Simpan';
-    showToast('Gagal menyimpan: ' + err.message, 'err');
+    // Server gagal — rollback data lokal & tampilkan error
+    if (target && snapshot) {
+      target.statusKeb  = snapshot.statusKeb;
+      target.metode     = snapshot.metode;
+      target.statusDat  = snapshot.statusDat;
+      target.keterangan = snapshot.keterangan;
+      target.alamatBaru = snapshot.alamatBaru;
+      target.lastUpdate = snapshot.lastUpdate;
+      updateCardInDOM(target);
+    }
+    showToast('⚠ Gagal sinkron ke server: ' + err.message, 'err');
   });
 }
 
