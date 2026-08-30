@@ -6,9 +6,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="VEKUS">
+<meta name="apple-mobile-web-app-title" content="VERKUS">
 <meta name="theme-color" content="#185FA5">
-<title>VEKUS — Verifikasi Keberadaan Usaha | BPS Jakarta Barat</title>
+<title>VERKUS — Verifikasi Keberadaan Usaha | BPS Jakarta Barat</title>
 <style>
 /* ── Reset & Base ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -677,7 +677,7 @@ body {
   <div class="topbar-left">
     <div class="topbar-logo">VK</div>
     <div>
-      <div class="topbar-title">VEKUS · Verifikasi Keberadaan Usaha</div>
+      <div class="topbar-title">VERKUS · Verifikasi Keberadaan Usaha</div>
       <div class="topbar-sub">SE2026 · BPS Kota Jakarta Barat</div>
     </div>
   </div>
@@ -724,9 +724,8 @@ body {
         <label>Status Pendataan</label>
         <select id="sel-status" onchange="onFilterChange()">
           <option value="">Semua Status</option>
-          <option value="Selesai">Selesai</option>
           <option value="Progress">Progress</option>
-          <option value="Belum Dikunjungi">Belum Dikunjungi</option>
+          <option value="Belum Dikunjungi">Belum Ada Keterangan</option>
           <option value="Belum Verifikasi">Belum Verifikasi</option>
         </select>
       </div>
@@ -1014,7 +1013,9 @@ function fetchPage(page, isFirst) {
       if (isFirst && json.kategoriList) buildKategoriFromServer(json.kategoriList);
       if (isFirst) totalRows = json.total;
 
-      updateStats(json.stats, json.total);
+      // Jika __KOSONG__ aktif, statistik akan dihitung ulang di renderFromLocal
+      var _pplNow = document.getElementById('sel-ppl').value;
+      if (_pplNow !== '__KOSONG__') updateStats(json.stats, json.total);
       appendData(json.data, isFirst);
       curPage = json.page + 1;
 
@@ -1059,6 +1060,7 @@ function appendData(newRows, isFirst) {
   var pplVal   = document.getElementById('sel-ppl').value;
   var tabRows = newRows.filter(function(d){
     // Sembunyikan kategori yang dieksklusi
+    if (!(d.namaUsaha || '').trim()) return false;
     if (EXCLUDE_KATEGORI.indexOf(d.kategori || '') !== -1) return false;
     // Filter tab
     var selesai = isSelesai(d);
@@ -1071,7 +1073,6 @@ function appendData(newRows, isFirst) {
     // Filter status dropdown jika ada
     if (status) {
       var cs = getCardStatus(d);
-      if (status === 'Selesai'          && cs !== 'selesai')  return false;
       if (status === 'Progress'         && cs !== 'progress') return false;
       if (status === 'Belum Dikunjungi' && cs !== 'belum')   return false;
       if (status === 'Belum Verifikasi' && cs !== 'kosong')   return false;
@@ -1106,16 +1107,47 @@ function fmtNum(n) {
   return (n || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 }
 
-// ── Update statistik summary bar ──
-function updateStats(stats, total) {
-  if (!stats) return;
-  document.getElementById('st-total').textContent    = fmtNum(total);
-  document.getElementById('st-selesai').textContent  = fmtNum(stats.selesai);
-  document.getElementById('st-progress').textContent = fmtNum(stats.progress);
-  document.getElementById('st-belum').textContent    = fmtNum(stats.belum);
+// ── Hitung statistik dari array data ──
+function calcStats(rows) {
+  var s = { selesai: 0, progress: 0, belum: 0 };
+  rows.forEach(function(d) {
+    var cs = getCardStatus(d);
+    if (cs === 'selesai')  s.selesai++;
+    else if (cs === 'progress') s.progress++;
+    else s.belum++;
+  });
+  return s;
+}
 
-  var nb = (stats.progress || 0) + (stats.belum || 0);
-  var ns = stats.selesai || 0;
+// ── Update statistik summary bar ──
+// Jika filter __KOSONG__ aktif, hitung ulang dari allData lokal.
+// Jika tidak, gunakan stats dari server.
+function updateStats(stats, total) {
+  var pplVal = document.getElementById('sel-ppl').value;
+  var useLocal = (pplVal === '__KOSONG__');
+
+  var s, t;
+  if (useLocal && allData.length > 0) {
+    var filtered = allData.filter(function(d) {
+      if (!(d.namaUsaha || '').trim()) return false;
+    if (EXCLUDE_KATEGORI.indexOf(d.kategori || '') !== -1) return false;
+      return (d.namaPegawai || '').trim() === '';
+    });
+    s = calcStats(filtered);
+    t = filtered.length;
+  } else {
+    if (!stats) return;
+    s = stats;
+    t = total;
+  }
+
+  document.getElementById('st-total').textContent    = fmtNum(t);
+  document.getElementById('st-selesai').textContent  = fmtNum(s.selesai);
+  document.getElementById('st-progress').textContent = fmtNum(s.progress);
+  document.getElementById('st-belum').textContent    = fmtNum(s.belum);
+
+  var nb = (s.progress || 0) + (s.belum || 0);
+  var ns = s.selesai || 0;
   var bBelum   = document.getElementById('badge-belum');
   var bSelesai = document.getElementById('badge-selesai');
   bBelum.textContent   = fmtNum(nb);
@@ -1157,7 +1189,15 @@ function buildFiltersFromServer(ppls) {
 
 // Alias agar fungsi lama yang masih dipanggil tidak error
 function buildFilters() {}
-function renderList()   { resetAndLoad(); }
+function renderList() {
+  var pplVal = document.getElementById('sel-ppl').value;
+  if (pplVal === '__KOSONG__' && allData.length > 0) {
+    // Data sudah ada, cukup filter + hitung stats lokal — tidak perlu fetch server
+    renderFromLocal();
+  } else {
+    resetAndLoad();
+  }
+}
 
 // ── Populasi dropdown kategori dari server (kategoriList — semua nilai unik) ──
 // Dipanggil sekali saat halaman pertama, persis seperti ppls untuk petugas.
@@ -1615,18 +1655,35 @@ function renderFromLocal() {
   window.filteredRef = [];
   el.innerHTML = '';
 
-  var shown = allData.filter(function(d) {
-    // Sembunyikan kategori yang dieksklusi
+  // ── Hitung data sesuai filter petugas + kategori (untuk statistik & kartu) ──
+  var pplFiltered = allData.filter(function(d) {
+    if (!(d.namaUsaha || '').trim()) return false;
     if (EXCLUDE_KATEGORI.indexOf(d.kategori || '') !== -1) return false;
+    if (pplVal === '__KOSONG__' && (d.namaPegawai || '').trim() !== '') return false;
+    if (kategori && (d.kategori || '') !== kategori) return false;
+    return true;
+  });
+  // Perbarui statistik berdasarkan data yang sudah difilter petugas
+  var localStats = calcStats(pplFiltered);
+  document.getElementById('st-total').textContent    = fmtNum(pplFiltered.length);
+  document.getElementById('st-selesai').textContent  = fmtNum(localStats.selesai);
+  document.getElementById('st-progress').textContent = fmtNum(localStats.progress);
+  document.getElementById('st-belum').textContent    = fmtNum(localStats.belum);
+  var nb = (localStats.progress || 0) + (localStats.belum || 0);
+  var ns = localStats.selesai || 0;
+  var bBelum   = document.getElementById('badge-belum');
+  var bSelesai = document.getElementById('badge-selesai');
+  bBelum.textContent   = fmtNum(nb);
+  bSelesai.textContent = fmtNum(ns);
+  bBelum.className   = 'tab-badge' + (nb > 0 ? ' has-items' : '');
+  bSelesai.className = 'tab-badge' + (ns > 0 ? ' has-items' : '');
+
+  var shown = pplFiltered.filter(function(d) {
     var selesai = isSelesai(d);
     if (activeTab === 'selesai' && !selesai) return false;
     if (activeTab === 'belum'   &&  selesai) return false;
-    // Filter petugas kosong (client-side)
-    if (pplVal === '__KOSONG__' && (d.namaPegawai || '').trim() !== '') return false;
-    if (kategori && (d.kategori || '') !== kategori) return false;
     if (status) {
       var cs = getCardStatus(d);
-      if (status === 'Selesai'          && cs !== 'selesai')  return false;
       if (status === 'Progress'         && cs !== 'progress') return false;
       if (status === 'Belum Dikunjungi' && cs !== 'belum')   return false;
       if (status === 'Belum Verifikasi' && cs !== 'kosong')   return false;
