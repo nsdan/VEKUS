@@ -779,7 +779,7 @@ body {
 // ══════════════════════════════════════════════════════════
 // KONFIGURASI — GANTI URL INI SETELAH DEPLOY APPS SCRIPT
 // ══════════════════════════════════════════════════════════
-var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxwfxmiXlSYSQsb_xM_tGAES4lfIzvvbOYXiUFd1Ociosc22DxFbNnD4Bj8j_yGXVLj/exec';
+var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwfx1AzIp3EFDhXyyHrW72N3MDfwEDRK8acYF63-JwPN5wumXP6NuSuzIzF5lZNMftJ/exec';
 // Contoh: 'https://script.google.com/macros/s/AKfycb.../exec'
 // ══════════════════════════════════════════════════════════
 
@@ -1204,7 +1204,7 @@ function simpan() {
       target.statusKeb  = payload.statusKeb;
       target.metode     = payload.metode;
       target.statusDat  = payload.statusDat;
-      target.pelaksana  = payload.pelaksana;
+      // pelaksana tidak diupdate — nilai di sheet tidak berubah, jaga konsistensi lokal
       target.keterangan = payload.keterangan;
       target.alamatBaru = payload.alamatBaru;
       // Update lastUpdate lokal ke tanggal hari ini
