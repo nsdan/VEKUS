@@ -279,6 +279,7 @@ body {
 .card.st-selesai  { border-left-color: #16A34A; }
 .card.st-progress { border-left-color: #D97706; }
 .card.st-belum    { border-left-color: #DC2626; }
+.card.st-kosong   { border-left-color: #9CA3AF; }
 
 .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .card-body { flex: 1; min-width: 0; }
@@ -299,6 +300,7 @@ body {
 .badge-selesai  { background: var(--green-bg); color: var(--green); }
 .badge-progress { background: var(--amber-bg); color: var(--amber); }
 .badge-belum    { background: var(--red-bg);   color: var(--red); }
+.badge-kosong   { background: #F3F4F6;         color: #6B7280; }
 .badge-ub       { background: var(--blue-bg);  color: var(--blue-txt); }
 .badge-um       { background: #EDE9FE;         color: #4C1D95; }
 .badge-pe       { background: #FCE7F3;         color: #831843; }
@@ -308,6 +310,7 @@ body {
 .dot-s { background: #16A34A; }
 .dot-p { background: #D97706; }
 .dot-b { background: #DC2626; }
+.dot-k { background: #9CA3AF; }
 
 .card-extra {
   margin-top: 10px;
@@ -621,6 +624,7 @@ body {
           <option value="Selesai">Selesai</option>
           <option value="Progress">Progress</option>
           <option value="Belum Dikunjungi">Belum Dikunjungi</option>
+          <option value="Belum Verifikasi">Belum Verifikasi</option>
         </select>
       </div>
     </div>
@@ -698,25 +702,33 @@ body {
         </div>
       </div>
 
-      <!-- Bagian Ditemukan: metode + status pendataan -->
-      <div id="form-ditemukan" class="form-row" style="margin-top:10px;display:none">
-        <div class="fg2">
-          <label>Metode Pendataan <span style="color:var(--red)">*</span></label>
-          <select id="f-metode">
-            <option value="">— Pilih —</option>
-            <option>PAPI</option>
-            <option>CAPI</option>
-            <option>CAWI</option>
-          </select>
+      <!-- Bagian Ditemukan: metode + status pendataan + keterangan (satu kontainer) -->
+      <div id="form-ditemukan" style="margin-top:10px;display:none">
+        <div class="form-row" style="margin-bottom:10px">
+          <div class="fg2">
+            <label>Metode Pendataan <span style="color:var(--red)">*</span></label>
+            <select id="f-metode">
+              <option value="">— Pilih —</option>
+              <option>PAPI</option>
+              <option>CAPI</option>
+              <option>CAWI</option>
+            </select>
+          </div>
+          <div class="fg2">
+            <label>Status Pendataan <span style="color:var(--red)">*</span></label>
+            <select id="f-status">
+              <option value="">— Pilih —</option>
+              <option>Selesai</option>
+              <option>Progress</option>
+              <option>Belum Dikunjungi</option>
+            </select>
+          </div>
         </div>
-        <div class="fg2">
-          <label>Status Pendataan <span style="color:var(--red)">*</span></label>
-          <select id="f-status">
-            <option value="">— Pilih —</option>
-            <option>Selesai</option>
-            <option>Progress</option>
-            <option>Belum Dikunjungi</option>
-          </select>
+        <div class="form-row one">
+          <div class="fg2">
+            <label>Keterangan <span style="color:var(--text3);font-weight:400;font-size:11px">(opsional)</span></label>
+            <textarea id="f-ket" placeholder="Isikan keterangan tambahan jika ada…"></textarea>
+          </div>
         </div>
       </div>
 
@@ -726,7 +738,7 @@ body {
           <label id="lbl-ket-wajib">Keterangan <span style="color:var(--red)">*</span></label>
           <textarea id="f-ket-wajib" placeholder="" style="min-height:80px"></textarea>
         </div>
-        <!-- Alamat baru — hanya tampil jika Tidak Ditemukan atau Pindah -->
+        <!-- Alamat baru — tampil jika Tidak Ditemukan, Pindah, atau Tutup -->
         <div id="wrap-alamat-baru" style="display:none">
           <div class="fg2">
             <label>Alamat Baru <span style="color:var(--text3);font-weight:400;font-size:11px">(opsional)</span></label>
@@ -750,17 +762,6 @@ body {
         <option>Pusdiklat</option>
         <option>STIS</option>
       </select>
-    </div>
-
-    <!-- Keterangan tambahan (untuk kondisi Ditemukan) -->
-    <div class="form-section" id="form-ket-tambahan" style="display:none">
-      <div class="form-section-title">Keterangan Tambahan</div>
-      <div class="form-row one">
-        <div class="fg2">
-          <label>Keterangan <span style="color:var(--text3);font-weight:400;font-size:11px">(opsional)</span></label>
-          <textarea id="f-ket" placeholder="Isikan keterangan tambahan jika ada…"></textarea>
-        </div>
-      </div>
     </div>
 
     <div class="modal-foot">
@@ -902,7 +903,8 @@ function appendData(newRows, isFirst) {
       var cs = getCardStatus(d);
       if (status === 'Selesai'          && cs !== 'selesai')  return false;
       if (status === 'Progress'         && cs !== 'progress') return false;
-      if (status === 'Belum Dikunjungi' && cs !== 'belum')    return false;
+      if (status === 'Belum Dikunjungi' && cs !== 'belum')   return false;
+      if (status === 'Belum Verifikasi' && cs !== 'kosong')    return false;
     }
     return true;
   });
@@ -923,20 +925,25 @@ function appendData(newRows, isFirst) {
   });
 }
 
+// ── Format angka dengan pemisah ribuan titik ──
+function fmtNum(n) {
+  return (n || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
 // ── Update statistik summary bar ──
 function updateStats(stats, total) {
   if (!stats) return;
-  document.getElementById('st-total').textContent    = total || 0;
-  document.getElementById('st-selesai').textContent  = stats.selesai  || 0;
-  document.getElementById('st-progress').textContent = stats.progress || 0;
-  document.getElementById('st-belum').textContent    = stats.belum    || 0;
+  document.getElementById('st-total').textContent    = fmtNum(total);
+  document.getElementById('st-selesai').textContent  = fmtNum(stats.selesai);
+  document.getElementById('st-progress').textContent = fmtNum(stats.progress);
+  document.getElementById('st-belum').textContent    = fmtNum(stats.belum);
 
   var nb = (stats.progress || 0) + (stats.belum || 0);
   var ns = stats.selesai || 0;
   var bBelum   = document.getElementById('badge-belum');
   var bSelesai = document.getElementById('badge-selesai');
-  bBelum.textContent   = nb;
-  bSelesai.textContent = ns;
+  bBelum.textContent   = fmtNum(nb);
+  bSelesai.textContent = fmtNum(ns);
   bBelum.className   = 'tab-badge' + (nb > 0 ? ' has-items' : '');
   bSelesai.className = 'tab-badge' + (ns > 0 ? ' has-items' : '');
 }
@@ -1058,9 +1065,9 @@ function onFilterChange() {
 function buildCard(d, idx) {
   var cs    = getCardStatus(d);
   var stLbl = getStatusLabel(d);
-  var stCls = cs==='selesai' ? 'st-selesai' : cs==='progress' ? 'st-progress' : 'st-belum';
-  var stBdg = cs==='selesai' ? 'badge-selesai' : cs==='progress' ? 'badge-progress' : 'badge-belum';
-  var dotCl = cs==='selesai' ? 'dot-s' : cs==='progress' ? 'dot-p' : 'dot-b';
+  var stCls = cs==='selesai' ? 'st-selesai' : cs==='progress' ? 'st-progress' : cs==='kosong' ? 'st-kosong' : 'st-belum';
+  var stBdg = cs==='selesai' ? 'badge-selesai' : cs==='progress' ? 'badge-progress' : cs==='kosong' ? 'badge-kosong' : 'badge-belum';
+  var dotCl = cs==='selesai' ? 'dot-s' : cs==='progress' ? 'dot-p' : cs==='kosong' ? 'dot-k' : 'dot-b';
   var katCl = d.kategori==='UB' ? 'badge-ub' : d.kategori==='UM' ? 'badge-um' : 'badge-pe';
   var doneBtn = cs==='selesai' ? 'done' : '';
 
@@ -1141,7 +1148,7 @@ function simpan() {
   var keb          = document.getElementById('f-keb').value;
   var isDitemukan  = keb === 'Ditemukan';
   var isLainnya    = keb !== '' && !isDitemukan;
-  var butuhaAlamat = keb === 'Tidak Ditemukan' || keb === 'Pindah';
+  var butuhaAlamat = keb === 'Tidak Ditemukan' || keb === 'Pindah' || keb === 'Tutup';
 
   // Validasi wajib
   if (!keb) {
@@ -1329,7 +1336,8 @@ function renderFromLocal() {
       var cs = getCardStatus(d);
       if (status === 'Selesai'          && cs !== 'selesai')  return false;
       if (status === 'Progress'         && cs !== 'progress') return false;
-      if (status === 'Belum Dikunjungi' && cs !== 'belum')    return false;
+      if (status === 'Belum Dikunjungi' && cs !== 'belum')   return false;
+      if (status === 'Belum Verifikasi' && cs !== 'kosong')    return false;
     }
     return true;
   });
@@ -1349,14 +1357,19 @@ function renderFromLocal() {
 }
 
 // Warna/kelas kartu berdasarkan kondisi baru
+// 'kosong'  = belum ada data sama sekali (statusKeb kosong)
+// 'belum'   = sudah dikunjungi tapi belum selesai (Ditemukan tapi statusDat kosong/Belum,
+//             atau selain Ditemukan tapi keterangan belum diisi)
+// 'progress'= Ditemukan + statusDat Progress
+// 'selesai' = Ditemukan + statusDat Selesai, atau selain Ditemukan + keterangan terisi
 function getCardStatus(d) {
   var keb = (d.statusKeb || '').trim();
-  if (!keb) return 'belum';
+  if (!keb) return 'kosong';   // belum verifikasi sama sekali
   if (keb === 'Ditemukan') {
     var st = (d.statusDat || '').trim();
     if (st === 'Selesai')  return 'selesai';
     if (st === 'Progress') return 'progress';
-    return 'belum';
+    return 'belum';  // statusDat kosong atau Belum Dikunjungi → merah
   }
   // Selain ditemukan: selesai jika keterangan terisi
   return (d.keterangan || '').trim() !== '' ? 'selesai' : 'belum';
@@ -1365,19 +1378,21 @@ function getCardStatus(d) {
 // Label badge status untuk ditampilkan di kartu
 function getStatusLabel(d) {
   var keb = (d.statusKeb || '').trim();
-  if (!keb) return 'Belum Dikunjungi';
+  if (!keb) return 'Belum Verifikasi';
   if (keb === 'Ditemukan') {
-    return (d.statusDat || '').trim() || 'Belum Dikunjungi';
+    var st = (d.statusDat || '').trim();
+    if (!st || st === 'Belum Dikunjungi') return 'Belum Dikunjungi';
+    return st;
   }
   return keb; // Tidak Ditemukan / Pindah / Tutup / Ganda
 }
 
 // Placeholder keterangan per status keberadaan
 var KET_PLACEHOLDER = {
-  'Tidak Ditemukan': 'Alasan Tidak Ditemukan. Misalkan keterangan RT dan warga setempat…',
-  'Pindah'         : 'Alasan Pindah. Misalkan keterangan RT dan warga setempat…',
-  'Tutup'          : 'Alasan Tutup. Misalkan sudah digembok atau disegel…',
-  'Ganda'          : 'Alasan Ganda. Misalkan sama dengan PT AAA…'
+  'Tidak Ditemukan': 'Misal: sudah cek lapangan, keterangan RT dan warga sekitar tidak mengetahui keberadaan usaha…',
+  'Pindah'         : 'Misal: sudah cek lapangan, keterangan RT dan warga sekitar karena bangkrut atau ganti usaha…',
+  'Tutup'          : 'Misal: sudah digembok atau disegel, keterangan RT dan warga sekitar…',
+  'Ganda'          : 'Misal: sama dengan usaha PT AAA di assignment ID XXXX…'
 };
 
 // Toggle form modal saat status keberadaan berubah
@@ -1386,13 +1401,12 @@ function onKebChange() {
   var isDitemukan = keb === 'Ditemukan';
   var isLainnya   = keb !== '' && !isDitemukan;
   var isEmpty     = keb === '';
-  var butuhaAlamat = keb === 'Tidak Ditemukan' || keb === 'Pindah';
+  var butuhaAlamat = keb === 'Tidak Ditemukan' || keb === 'Pindah' || keb === 'Tutup';
 
-  document.getElementById('form-ditemukan').style.display    = isDitemukan  ? '' : 'none';
-  document.getElementById('form-lainnya').style.display      = isLainnya    ? '' : 'none';
-  document.getElementById('form-hint').style.display         = isEmpty      ? '' : 'none';
-  document.getElementById('form-ket-tambahan').style.display = isDitemukan  ? '' : 'none';
-  document.getElementById('wrap-alamat-baru').style.display  = butuhaAlamat ? '' : 'none';
+  document.getElementById('form-ditemukan').style.display   = isDitemukan  ? '' : 'none';
+  document.getElementById('form-lainnya').style.display     = isLainnya    ? '' : 'none';
+  document.getElementById('form-hint').style.display        = isEmpty      ? '' : 'none';
+  document.getElementById('wrap-alamat-baru').style.display = butuhaAlamat ? '' : 'none';
 
   // Placeholder & label keterangan dinamis
   if (isLainnya) {
@@ -1407,7 +1421,7 @@ function onKebChange() {
     document.getElementById('f-ket').value    = '';
   }
   if (!isLainnya) {
-    document.getElementById('f-ket-wajib').value = '';
+    document.getElementById('f-ket-wajib').value  = '';
     document.getElementById('f-alamat-baru').value = '';
   }
   if (!butuhaAlamat) {
