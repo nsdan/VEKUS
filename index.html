@@ -189,14 +189,18 @@ body {
   display: none;
   position: absolute;
   top: calc(100% + 4px);
-  left: 0; right: 0;
+  left: 0;
+  min-width: 240px;
+  width: max-content;
+  max-width: calc(100vw - 2rem);
   background: var(--surface);
   border: 1px solid var(--border2);
   border-radius: var(--radius);
   box-shadow: 0 8px 24px rgba(0,0,0,.12);
   z-index: 90;
-  max-height: 220px;
+  max-height: 260px;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 .ppl-dropdown.open { display: block; }
 .ppl-search {
@@ -218,11 +222,14 @@ body {
 }
 .ppl-search input:focus { outline: none; border-color: var(--accent); }
 .ppl-option {
-  padding: 8px 12px;
+  padding: 9px 14px;
   font-size: 13px;
   cursor: pointer;
   color: var(--text1);
   transition: background .1s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .ppl-option:hover { background: var(--bg); }
 .ppl-option.selected { background: var(--blue-bg); color: var(--blue-txt); font-weight: 500; }
@@ -342,12 +349,19 @@ body {
 .btn-lengkapi:hover { background: var(--bg); border-color: var(--accent); color: var(--accent); }
 .btn-lengkapi.done  { color: var(--green); border-color: #86EFAC; }
 
-/* ── Tabs ── */
+/* ── Sort Pill ── */
+.tabs-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  gap: 10px;
+}
 .tabs {
   display: flex;
   gap: 0;
-  margin-bottom: 1rem;
   border-bottom: 2px solid var(--border);
+  flex: 1;
 }
 .tab-btn {
   padding: 9px 18px;
@@ -383,6 +397,81 @@ body {
 .tab-btn.active:first-child .tab-badge    { background: #FEF3C7; color: #92400E; }
 .tab-btn:last-child  .tab-badge.has-items { background: var(--green-bg); color: var(--green); }
 .tab-btn.active:last-child  .tab-badge    { background: var(--green-bg); color: var(--green); }
+
+/* ── Sort Button + Dropdown ── */
+.sort-wrap {
+  position: relative;
+  flex-shrink: 0;
+  align-self: center;
+  margin-bottom: 2px;
+}
+.sort-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text2);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+  white-space: nowrap;
+}
+.sort-btn:hover { border-color: var(--accent); color: var(--accent); }
+.sort-btn.sorted { border-color: var(--accent); color: var(--accent); background: #EFF6FF; }
+.sort-btn .sort-label { max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
+.sort-chevron { transition: transform .2s; }
+.sort-btn.open .sort-chevron { transform: rotate(180deg); }
+.sort-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0,0,0,.12);
+  z-index: 90;
+  overflow: hidden;
+}
+.sort-dropdown.open { display: block; }
+.sort-dropdown-title {
+  padding: 8px 12px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text3);
+  border-bottom: 1px solid var(--border);
+}
+.sort-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  font-size: 13px;
+  color: var(--text1);
+  cursor: pointer;
+  transition: background .1s;
+}
+.sort-option:hover { background: var(--bg); }
+.sort-option.selected { background: #EFF6FF; color: var(--accent); font-weight: 500; }
+.sort-option-icon {
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  color: var(--text2);
+}
+.sort-option.selected .sort-option-icon { background: #DBEAFE; color: var(--accent); }
+.sort-check { margin-left: auto; color: var(--accent); opacity: 0; }
+.sort-option.selected .sort-check { opacity: 1; }
 
 /* ── Empty / Loading ── */
 .empty {
@@ -559,9 +648,25 @@ body {
 
 /* ── Responsive ── */
 @media (max-width: 600px) {
-  .summary-bar { grid-template-columns: repeat(2, 1fr); }
-  .form-row    { grid-template-columns: 1fr; }
-  .topbar-sub  { display: none; }
+  .summary-bar  { grid-template-columns: repeat(2, 1fr); }
+  .form-row     { grid-template-columns: 1fr; }
+  .topbar-sub   { display: none; }
+  .tabs-row     { flex-wrap: wrap; gap: 6px; }
+  .sort-wrap    { margin-left: auto; }
+
+  /* Filter grid jadi 1 kolom di mobile agar kolom Petugas tidak sempit */
+  .filter-card .filter-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Dropdown petugas lebar penuh parent, tidak terpotong */
+  .ppl-dropdown {
+    left: 0;
+    right: 0;
+    width: auto;
+    min-width: 0;
+    max-width: 100%;
+  }
 }
 </style>
 </head>
@@ -631,13 +736,6 @@ body {
         <label>Kategori</label>
         <select id="sel-kategori" onchange="onFilterChange()">
           <option value="">Semua Kategori</option>
-          <option value="UB">UB</option>
-          <option value="UM">UM</option>
-          <option value="UMB">UMB</option>
-          <option value="UMK">UMK</option>
-          <option value="UMM">UMM</option>
-          <option value="UMB">UMB</option>
-          <option value="UB Non Pertanian">UB Non Pertanian</option>
         </select>
       </div>
     </div>
@@ -666,20 +764,61 @@ body {
   <!-- Search usaha -->
   <div class="search-wrap">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-    <input type="text" class="search-input" id="search-usaha" placeholder="Cari nama usaha…" oninput="onFilterChange()" />
+    <input type="text" class="search-input" id="search-usaha" placeholder="Cari nama usaha…" oninput="onServerFilterChange()" />
   </div>
 
-  <!-- Tabs -->
-  <div class="tabs">
-    <button class="tab-btn active" id="tab-belum" onclick="switchTab('belum')">
-      Belum Selesai
-      <span class="tab-badge" id="badge-belum">—</span>
-    </button>
-    <button class="tab-btn" id="tab-selesai" onclick="switchTab('selesai')">
-      Selesai
-      <span class="tab-badge" id="badge-selesai">—</span>
-    </button>
+  <!-- Tabs + Sort Pills -->
+  <div class="tabs-row">
+    <div class="tabs">
+      <button class="tab-btn active" id="tab-belum" onclick="switchTab('belum')">
+        Belum Selesai
+        <span class="tab-badge" id="badge-belum">—</span>
+      </button>
+      <button class="tab-btn" id="tab-selesai" onclick="switchTab('selesai')">
+        Selesai
+        <span class="tab-badge" id="badge-selesai">—</span>
+      </button>
+    </div>
+
+    <!-- Sort Button + Dropdown -->
+    <div class="sort-wrap" id="sort-wrap">
+      <button class="sort-btn" id="sort-btn" onclick="toggleSortDropdown()">
+        <!-- ikon sort/filter -->
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <path d="M3 6h18M7 12h10M11 18h2"/>
+        </svg>
+        <span class="sort-label" id="sort-label">Urutkan</span>
+        <svg class="sort-chevron" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="sort-dropdown" id="sort-dropdown">
+        <div class="sort-dropdown-title">Urutkan berdasarkan</div>
+        <div class="sort-option selected" data-val="" onclick="setSort('', 'Urutkan')">
+          <div class="sort-option-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M3 12h6M15 12h6"/></svg>
+          </div>
+          Default
+          <svg class="sort-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div class="sort-option" data-val="az" onclick="setSort('az', 'A \u2192 Z')">
+          <div class="sort-option-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 17l4-10 4 10M5.5 13h3M16 4v16M13 7l3-3 3 3"/></svg>
+          </div>
+          Abjad A → Z
+          <svg class="sort-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div class="sort-option" data-val="za" onclick="setSort('za', 'Z \u2192 A')">
+          <div class="sort-option-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 7l4 10 4-10M5.5 11h3M16 20V4M13 17l3 3 3-3"/></svg>
+          </div>
+          Abjad Z → A
+          <svg class="sort-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+      </div>
+    </div>
   </div>
+
+  <!-- hidden sort value -->
+  <input type="hidden" id="sel-sort" value="" />
 
   <div class="usaha-list" id="usaha-list"></div>
   <!-- Sentinel untuk infinite scroll -->
@@ -793,7 +932,7 @@ body {
 // ══════════════════════════════════════════════════════════
 // KONFIGURASI — GANTI URL INI SETELAH DEPLOY APPS SCRIPT
 // ══════════════════════════════════════════════════════════
-var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby4eIp1GHcDwmLqayA5iJ6qHqougGDE24GkifnXpWuM6W5cDiitoUHCFQH_CSZITrHw/exec';
+var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzdP4JKS64BwC4kKDs_1mcZs0zZNvWftcVQtAT84SyMr24kZmEx7CNJ1zRZdN-sIfWv/exec';
 // Contoh: 'https://script.google.com/macros/s/AKfycb.../exec'
 // ══════════════════════════════════════════════════════════
 
@@ -853,11 +992,16 @@ function fetchPage(page, isFirst) {
 
   var ppl    = document.getElementById('sel-ppl').value;
   var q      = (document.getElementById('search-usaha').value || '').trim();
+  // Halaman pertama minta 500 baris agar dropdown kategori terwakili penuh;
+  // halaman berikutnya (infinite scroll) tetap PAGE_SIZE = 50
+  var ps  = isFirst ? 9999 : PAGE_SIZE; // ambil semua data sekaligus agar filter client-side bekerja penuh
+  // __KOSONG__ = filter lokal (usaha tanpa petugas), tidak dikirim ke server
+  var serverPpl = (ppl && ppl !== '__KOSONG__') ? ppl : '';
   var url    = APPS_SCRIPT_URL
     + '?page=' + page
-    + '&pageSize=' + PAGE_SIZE
-    + (ppl ? '&ppl=' + encodeURIComponent(ppl) : '')
-    + (q   ? '&q='   + encodeURIComponent(q)   : '');
+    + '&pageSize=' + ps
+    + (serverPpl ? '&ppl=' + encodeURIComponent(serverPpl) : '')
+    + (q         ? '&q='   + encodeURIComponent(q)         : '');
 
   fetch(url)
     .then(function(r){ return r.json(); })
@@ -867,6 +1011,7 @@ function fetchPage(page, isFirst) {
 
       // Halaman pertama: set PPL list & stats dari server
       if (isFirst && json.ppls) buildFiltersFromServer(json.ppls);
+      if (isFirst && json.kategoriList) buildKategoriFromServer(json.kategoriList);
       if (isFirst) totalRows = json.total;
 
       updateStats(json.stats, json.total);
@@ -900,20 +1045,27 @@ function appendData(newRows, isFirst) {
     allData = newRows;
     window.filteredRef = [];
     document.getElementById('usaha-list').innerHTML = '';
-    // Populasi dropdown kategori dari data aktual
-    buildKategoriOptions(newRows);
   } else {
     allData = allData.concat(newRows);
   }
 
+  // Dropdown kategori diisi dari server (kategoriList) saat halaman pertama,
+  // tidak perlu direbuild per-scroll dari allData yang belum lengkap.
+
   // Filter berdasarkan tab aktif dan filter status/kategori dropdown
   var status   = document.getElementById('sel-status').value;
   var kategori = document.getElementById('sel-kategori').value;
+  var sortVal  = document.getElementById('sel-sort').value;
+  var pplVal   = document.getElementById('sel-ppl').value;
   var tabRows = newRows.filter(function(d){
+    // Sembunyikan kategori yang dieksklusi
+    if (EXCLUDE_KATEGORI.indexOf(d.kategori || '') !== -1) return false;
     // Filter tab
     var selesai = isSelesai(d);
     if (activeTab === 'selesai' && !selesai) return false;
     if (activeTab === 'belum'   &&  selesai) return false;
+    // Filter petugas kosong (client-side)
+    if (pplVal === '__KOSONG__' && (d.namaPegawai || '').trim() !== '') return false;
     // Filter kategori
     if (kategori && (d.kategori || '') !== kategori) return false;
     // Filter status dropdown jika ada
@@ -926,6 +1078,12 @@ function appendData(newRows, isFirst) {
     }
     return true;
   });
+  // Sorting abjad
+  if (sortVal === 'az') {
+    tabRows.sort(function(a,b){ return (a.namaUsaha||'').localeCompare(b.namaUsaha||'', 'id'); });
+  } else if (sortVal === 'za') {
+    tabRows.sort(function(a,b){ return (b.namaUsaha||'').localeCompare(a.namaUsaha||'', 'id'); });
+  }
 
   var el = document.getElementById('usaha-list');
 
@@ -970,12 +1128,23 @@ function updateStats(stats, total) {
 function buildFiltersFromServer(ppls) {
   var opts = document.getElementById('ppl-options');
   opts.innerHTML = '';
+
+  // Opsi: Semua Petugas
   var all = document.createElement('div');
   all.className = 'ppl-option selected';
   all.textContent = 'Semua Petugas';
   all.dataset.val = '';
   all.onclick = function(){ selectPpl('', 'Semua Petugas'); };
   opts.appendChild(all);
+
+  // Opsi: Belum Ada Petugas (namaPegawai kosong)
+  var noP = document.createElement('div');
+  noP.className = 'ppl-option';
+  noP.textContent = '— Belum Ada Petugas —';
+  noP.dataset.val = '__KOSONG__';
+  noP.onclick = function(){ selectPpl('__KOSONG__', '— Belum Ada Petugas —'); };
+  opts.appendChild(noP);
+
   ppls.forEach(function(p){
     var el = document.createElement('div');
     el.className = 'ppl-option';
@@ -990,22 +1159,45 @@ function buildFiltersFromServer(ppls) {
 function buildFilters() {}
 function renderList()   { resetAndLoad(); }
 
-// ── Populasi dropdown kategori dari data aktual ──
-function buildKategoriOptions(rows) {
+// ── Populasi dropdown kategori dari server (kategoriList — semua nilai unik) ──
+// Dipanggil sekali saat halaman pertama, persis seperti ppls untuk petugas.
+// Kategori dalam EXCLUDE_KATEGORI tidak ditampilkan di dropdown.
+var EXCLUDE_KATEGORI = ['Perumahan Elit'];
+
+function buildKategoriFromServer(list) {
   var sel  = document.getElementById('sel-kategori');
   var prev = sel.value;
-  // Kumpulkan unik, urut alfabet
+  var sorted = list.slice()
+    .filter(function(k){ return EXCLUDE_KATEGORI.indexOf(k) === -1; })
+    .sort();
+  sel.innerHTML = '<option value="">Semua Kategori</option>';
+  sorted.forEach(function(k){
+    var opt = document.createElement('option');
+    opt.value = k; opt.textContent = k;
+    sel.appendChild(opt);
+  });
+  if (prev && sorted.indexOf(prev) !== -1) sel.value = prev;
+}
+
+// ── Fallback: bangun kategori dari allData jika server tidak kirim kategoriList ──
+// (hanya dipakai jika GAS belum diperbarui)
+function buildKategoriOptions(rows) {
+  var sel = document.getElementById('sel-kategori');
+  if (sel.options.length > 1) return; // sudah terisi dari server, skip
+  var prev = sel.value;
   var seen = {}, list = [];
-  rows.forEach(function(d){ if (d.kategori && !seen[d.kategori]) { seen[d.kategori]=1; list.push(d.kategori); } });
+  rows.forEach(function(d){
+    if (d.kategori && !seen[d.kategori] && EXCLUDE_KATEGORI.indexOf(d.kategori) === -1) {
+      seen[d.kategori] = 1; list.push(d.kategori);
+    }
+  });
   list.sort();
-  // Rebuild opsi
   sel.innerHTML = '<option value="">Semua Kategori</option>';
   list.forEach(function(k){
     var opt = document.createElement('option');
     opt.value = k; opt.textContent = k;
     sel.appendChild(opt);
   });
-  // Pertahankan pilihan sebelumnya jika masih ada
   if (prev && seen[prev]) sel.value = prev;
 }
 
@@ -1032,6 +1224,15 @@ function togglePplDropdown() {
     document.getElementById('ppl-search-input').focus();
     document.getElementById('ppl-search-input').value = '';
     filterPplOptions();
+
+    // Pastikan dropdown tidak keluar kanan layar di mobile
+    dd.style.left  = '';
+    dd.style.right = '';
+    var rect = dd.getBoundingClientRect();
+    if (rect.right > window.innerWidth - 8) {
+      dd.style.left  = 'auto';
+      dd.style.right = '0';
+    }
   }
 }
 
@@ -1079,6 +1280,47 @@ document.addEventListener('click', function(e){
   }
 });
 
+// ── Toggle dropdown sort ──
+function toggleSortDropdown() {
+  var dd  = document.getElementById('sort-dropdown');
+  var btn = document.getElementById('sort-btn');
+  var open = dd.classList.toggle('open');
+  btn.classList.toggle('open', open);
+}
+
+// ── Set sort & tutup dropdown ──
+function setSort(val, label) {
+  document.getElementById('sel-sort').value = val;
+
+  // Update label tombol
+  var lblEl = document.getElementById('sort-label');
+  if (lblEl) lblEl.textContent = label || 'Urutkan';
+
+  // Tombol berwarna jika ada sort aktif
+  var btn = document.getElementById('sort-btn');
+  btn.classList.toggle('sorted', val !== '');
+
+  // Update selected class di opsi
+  document.querySelectorAll('#sort-dropdown .sort-option').forEach(function(el){
+    el.classList.toggle('selected', el.dataset.val === val);
+  });
+
+  // Tutup dropdown
+  document.getElementById('sort-dropdown').classList.remove('open');
+  btn.classList.remove('open');
+
+  onFilterChange();
+}
+
+// ── Tutup sort dropdown jika klik di luar ──
+document.addEventListener('click', function(e){
+  var wrap = document.getElementById('sort-wrap');
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById('sort-dropdown').classList.remove('open');
+    document.getElementById('sort-btn').classList.remove('open');
+  }
+});
+
 // ── Ganti tab aktif ──
 function switchTab(tab) {
   activeTab = tab;
@@ -1092,8 +1334,14 @@ function switchTab(tab) {
   }
 }
 
-// ── Filter berubah: debounce 300ms ──
+// ── Filter berubah ──
+// Kategori & status: render lokal saja (data sudah ada di client)
+// Petugas & search : fetch ulang ke server
 function onFilterChange() {
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(renderFromLocal, 50);
+}
+function onServerFilterChange() {
   clearTimeout(filterTimer);
   filterTimer = setTimeout(resetAndLoad, 300);
 }
@@ -1360,15 +1608,21 @@ function updateCardInDOM(d) {
 function renderFromLocal() {
   var status   = document.getElementById('sel-status').value;
   var kategori = document.getElementById('sel-kategori').value;
+  var sortVal  = document.getElementById('sel-sort').value;
+  var pplVal   = document.getElementById('sel-ppl').value;
   var el       = document.getElementById('usaha-list');
 
   window.filteredRef = [];
   el.innerHTML = '';
 
   var shown = allData.filter(function(d) {
+    // Sembunyikan kategori yang dieksklusi
+    if (EXCLUDE_KATEGORI.indexOf(d.kategori || '') !== -1) return false;
     var selesai = isSelesai(d);
     if (activeTab === 'selesai' && !selesai) return false;
     if (activeTab === 'belum'   &&  selesai) return false;
+    // Filter petugas kosong (client-side)
+    if (pplVal === '__KOSONG__' && (d.namaPegawai || '').trim() !== '') return false;
     if (kategori && (d.kategori || '') !== kategori) return false;
     if (status) {
       var cs = getCardStatus(d);
@@ -1379,11 +1633,19 @@ function renderFromLocal() {
     }
     return true;
   });
+  // Sorting abjad
+  if (sortVal === 'az') {
+    shown.sort(function(a,b){ return (a.namaUsaha||'').localeCompare(b.namaUsaha||'', 'id'); });
+  } else if (sortVal === 'za') {
+    shown.sort(function(a,b){ return (b.namaUsaha||'').localeCompare(a.namaUsaha||'', 'id'); });
+  }
 
   if (shown.length === 0) {
-    el.innerHTML = '<div class="empty">' +
-      (activeTab === 'selesai' ? 'Belum ada usaha yang selesai.' : 'Semua usaha sudah selesai! 🎉') +
-      '</div>';
+    var hasFilter = kategori || status;
+    var msg = hasFilter
+      ? 'Tidak ada usaha yang cocok dengan filter yang dipilih.'
+      : (activeTab === 'selesai' ? 'Belum ada usaha yang selesai.' : 'Semua usaha sudah selesai! 🎉');
+    el.innerHTML = '<div class="empty">' + msg + '</div>';
     return;
   }
 
@@ -1430,7 +1692,7 @@ var KET_PLACEHOLDER = {
   'Tidak Ditemukan': 'Misal: sudah cek lapangan, keterangan RT dan warga sekitar tidak mengetahui keberadaan usaha…',
   'Pindah'         : 'Misal: sudah cek lapangan, keterangan RT dan warga sekitar karena bangkrut atau ganti usaha…',
   'Tutup'          : 'Misal: sudah digembok atau disegel, keterangan RT dan warga sekitar…',
-  'Ganda'          : 'Misal: sama dengan usaha PT AAA di assignment ID XXXX…'
+  'Ganda'          : 'Misal: Sama dengan usaha PT AAA Kecamatan A Kelurahan A'
 };
 
 // Toggle form modal saat status keberadaan berubah
