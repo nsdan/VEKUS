@@ -779,7 +779,7 @@ body {
 // ══════════════════════════════════════════════════════════
 // KONFIGURASI — GANTI URL INI SETELAH DEPLOY APPS SCRIPT
 // ══════════════════════════════════════════════════════════
-var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzI8tyRuW1R8_xUtgH0tRQz4_4jICCuJN4zq2Cb5R9BD82UJJ1G0mF-al9eibTpnmJ3/exec';
+var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxwfxmiXlSYSQsb_xM_tGAES4lfIzvvbOYXiUFd1Ociosc22DxFbNnD4Bj8j_yGXVLj/exec';
 // Contoh: 'https://script.google.com/macros/s/AKfycb.../exec'
 // ══════════════════════════════════════════════════════════
 
@@ -1031,7 +1031,12 @@ function switchTab(tab) {
   activeTab = tab;
   document.getElementById('tab-belum').classList.toggle('active', tab === 'belum');
   document.getElementById('tab-selesai').classList.toggle('active', tab === 'selesai');
-  resetAndLoad();
+  // Jika allData sudah ada, tampilkan lokal dulu — terasa instan
+  if (allData.length > 0) {
+    renderFromLocal();
+  } else {
+    resetAndLoad();
+  }
 }
 
 // ── Filter berubah: debounce 300ms ──
@@ -1241,47 +1246,97 @@ function isSelesai(d) {
 
 // ── Update satu kartu di DOM tanpa reload seluruh daftar ──
 function updateCardInDOM(d) {
-  // Cari elemen kartu berdasarkan rowIndex di filteredRef
+  var selesai    = isSelesai(d);
+  var shouldShow = (activeTab === 'selesai') ? selesai : !selesai;
+
+  // Cari idx kartu ini di filteredRef (berdasarkan rowIndex)
   var idx = -1;
   for (var i = 0; i < (window.filteredRef || []).length; i++) {
     if (window.filteredRef[i].rowIndex === d.rowIndex) { idx = i; break; }
   }
-  if (idx === -1) return;
-
-  // Update referensi filteredRef
-  window.filteredRef[idx] = d;
-
-  var cs       = getCardStatus(d);
-  var selesai  = isSelesai(d);
-
-  // Apakah kartu ini seharusnya masih tampil di tab aktif?
-  var shouldShow = (activeTab === 'selesai') ? selesai : !selesai;
-
-  // Cari elemen kartu di DOM — tombol menyimpan data-idx
-  var btn = document.querySelector('.btn-lengkapi[data-idx="' + idx + '"]');
-  if (!btn) return;
-  var card = btn.closest('.card');
-  if (!card) return;
 
   if (!shouldShow) {
-    // Kartu pindah tab — hapus dari tampilan saja
-    card.style.transition = 'opacity .25s';
-    card.style.opacity    = '0';
-    setTimeout(function(){ card.remove(); }, 260);
+    // Kartu pindah tab — hapus dari DOM dengan animasi, lalu re-render
+    // seluruh list dari allData lokal (tanpa fetch server) agar tab
+    // tujuan juga terisi dengan benar.
+    if (idx !== -1) {
+      var btn = document.querySelector('.btn-lengkapi[data-idx="' + idx + '"]');
+      var card = btn ? btn.closest('.card') : null;
+      if (card) {
+        card.style.transition = 'opacity .2s';
+        card.style.opacity    = '0';
+        setTimeout(function() {
+          card.remove();
+          renderFromLocal(); // rebuild filteredRef & DOM dari allData
+        }, 220);
+        return;
+      }
+    }
+    renderFromLocal();
     return;
   }
 
-  // Bangun ulang HTML kartu dengan data terbaru
-  var newHtml = buildCard(d, idx);
-  var tmp = document.createElement('div');
-  tmp.innerHTML = newHtml;
-  var newCard = tmp.firstElementChild;
+  // Kartu tetap di tab ini — update filteredRef dan rebuild elemen
+  if (idx === -1) {
+    // Belum ada di filteredRef (jarang terjadi), render ulang saja
+    renderFromLocal();
+    return;
+  }
 
-  // Animasi singkat agar terasa ada perubahan
-  newCard.style.transition = 'box-shadow .2s';
-  card.replaceWith(newCard);
-  newCard.style.boxShadow = '0 0 0 2px #16A34A55';
-  setTimeout(function(){ newCard.style.boxShadow = ''; }, 600);
+  window.filteredRef[idx] = d;
+
+  var btnEl = document.querySelector('.btn-lengkapi[data-idx="' + idx + '"]');
+  if (!btnEl) { renderFromLocal(); return; }
+  var cardEl = btnEl.closest('.card');
+  if (!cardEl) { renderFromLocal(); return; }
+
+  // Rebuild kartu ini saja
+  var tmp = document.createElement('div');
+  tmp.innerHTML = buildCard(d, idx);
+  var newCard = tmp.firstElementChild;
+  cardEl.replaceWith(newCard);
+
+  // Kilat hijau singkat sebagai feedback visual
+  newCard.style.transition = 'box-shadow .15s';
+  newCard.style.boxShadow  = '0 0 0 2px #16A34A66';
+  setTimeout(function(){ newCard.style.boxShadow = ''; }, 500);
+}
+
+// ── Render ulang seluruh list dari allData lokal (tanpa fetch server) ──
+// Dipakai setelah simpan berhasil saat kartu berpindah tab,
+// sehingga tab tujuan langsung menampilkan kartu yang baru saja disimpan.
+function renderFromLocal() {
+  var status = document.getElementById('sel-status').value;
+  var el     = document.getElementById('usaha-list');
+
+  window.filteredRef = [];
+  el.innerHTML = '';
+
+  var shown = allData.filter(function(d) {
+    var selesai = isSelesai(d);
+    if (activeTab === 'selesai' && !selesai) return false;
+    if (activeTab === 'belum'   &&  selesai) return false;
+    if (status) {
+      var cs = getCardStatus(d);
+      if (status === 'Selesai'          && cs !== 'selesai')  return false;
+      if (status === 'Progress'         && cs !== 'progress') return false;
+      if (status === 'Belum Dikunjungi' && cs !== 'belum')    return false;
+    }
+    return true;
+  });
+
+  if (shown.length === 0) {
+    el.innerHTML = '<div class="empty">' +
+      (activeTab === 'selesai' ? 'Belum ada usaha yang selesai.' : 'Semua usaha sudah selesai! 🎉') +
+      '</div>';
+    return;
+  }
+
+  shown.forEach(function(d) {
+    var idx = window.filteredRef.length;
+    window.filteredRef.push(d);
+    el.insertAdjacentHTML('beforeend', buildCard(d, idx));
+  });
 }
 
 // Warna/kelas kartu berdasarkan kondisi baru
